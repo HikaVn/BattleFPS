@@ -2,6 +2,7 @@
 import { Net } from './net.js';
 import { Game } from './game.js';
 import { Tutorial } from './tutorial.js';
+import { TouchControls, isTouchDevice } from './touch.js';
 import { WEAPONS, HEALS, lootImage } from './shared.js';
 
 const $ = (id) => document.getElementById(id);
@@ -18,6 +19,16 @@ const state = {
 const net = new Net();
 let game = null;
 const tutorial = new Tutorial(net, () => game);
+const isTouch = isTouchDevice();
+let touch = null;
+
+// Swap the menu hint for the touch-specific one on mobile.
+if (isTouch) {
+  const hd = document.getElementById('hint-desktop');
+  const ht = document.getElementById('hint-touch');
+  if (hd) hd.style.display = 'none';
+  if (ht) ht.style.display = 'block';
+}
 
 // ---- UI helpers -----------------------------------------------------------
 function show(el) { el.classList.remove('hidden'); }
@@ -136,8 +147,16 @@ function enterGame(opts) {
   }
   game.build({ selfId: state.selfId, mapSize: opts.mapSize, spawn: opts.spawn, seed: state.room, inv: opts.inv, loot: opts.loot });
   game.start();
-  // require a click to lock the pointer
-  $('lock-hint').classList.add('show');
+  if (isTouch) {
+    // Mobile: show on-screen controls, no pointer lock needed.
+    if (!touch) touch = new TouchControls(game);
+    touch.attach();
+    touch.syncInventory(opts.inv || game.inv);
+    $('lock-hint').classList.remove('show');
+  } else {
+    // Desktop: require a click to lock the pointer.
+    $('lock-hint').classList.add('show');
+  }
 }
 
 function makeCallbacks() {
@@ -184,6 +203,7 @@ function makeCallbacks() {
         const item = document.querySelector(`.heal-item[data-key="${key}"]`);
         if (item) item.classList.toggle('empty', !(heals[key] > 0));
       }
+      if (touch && game) touch.syncInventory(game.inv);
     },
     onReload: (on) => { $('reload-note').textContent = on ? 'リロード中…' : ''; },
     onHurt: () => {

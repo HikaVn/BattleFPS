@@ -2,7 +2,9 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>BattleFPS — Apex-like Browser Arena</title>
   <link rel="stylesheet" href="css/style.css" />
   <script type="importmap">
@@ -36,13 +38,20 @@
       </div>
 
       <div class="error" id="menu-error"></div>
-      <div class="hint">
+      <div class="hint" id="hint-desktop">
         <b>初めての人は「ソロチュートリアル」から！</b> 1人で操作を練習できます。<br />
         移動: <b>WASD</b> / ジャンプ: <b>Space</b> / 射撃: <b>左クリック</b><br />
         武器切替: <b>1 2 3 / ホイール</b> / リロード: <b>R</b> / 拾う: <b>E</b><br />
         回復: <b>Z</b>注射 <b>C</b>メドキット / シールド: <b>X</b>セル <b>V</b>バッテリー<br />
         マップに落ちている武器・弾・回復・シールドを拾って戦え。<br />
         最後の1人になるまで戦え。安全地帯（リング）は徐々に縮小します。
+      </div>
+      <div class="hint" id="hint-touch" style="display:none;">
+        <b>初めての人は「ソロチュートリアル」から！</b><br />
+        📱 スマホ操作: 左の<b>スティック</b>で移動 / 右画面を<b>ドラッグ</b>で視点・<b>タップ</b>で射撃<br />
+        右下の<b>射撃</b>ボタン押しっぱなしで連射。<b>ジャンプ / R(リロード) / 拾う / 武器</b>ボタンと、<br />
+        下中央の<b>回復・シールド</b>ボタンで操作します。<br />
+        マップのアイテムを拾い、最後の1人を目指せ。リングは徐々に縮小します。
       </div>
     </div>
   </div>
