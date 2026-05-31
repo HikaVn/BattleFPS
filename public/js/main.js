@@ -1,7 +1,7 @@
 // App entry: wires the menu / lobby / HUD UI to the network and game engine.
 import { Net } from './net.js';
 import { Game } from './game.js';
-import { WEAPONS, HEALS } from './shared.js';
+import { WEAPONS, HEALS, lootImage } from './shared.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -155,7 +155,14 @@ function makeCallbacks() {
       inv.weapons.forEach((wid, i) => {
         const d = document.createElement('span');
         d.className = 'wslot' + (wid === inv.current ? ' active' : '');
-        d.textContent = (i + 1) + '·' + (WEAPONS[wid] ? WEAPONS[wid].name : wid);
+        const url = lootImage('weapon', wid);
+        if (url) {
+          const img = document.createElement('img');
+          img.src = url; img.alt = '';
+          img.onerror = () => { img.remove(); };
+          d.append(img);
+        }
+        d.append(document.createTextNode((i + 1) + '·' + (WEAPONS[wid] ? WEAPONS[wid].name : wid)));
         slots.append(d);
       });
     },
@@ -181,6 +188,10 @@ function makeCallbacks() {
     onNearbyLoot: (item) => {
       const p = $('pickup-prompt');
       if (!item) { p.classList.remove('show'); return; }
+      const icon = $('pickup-icon');
+      const url = lootImage(item.type, item.key);
+      if (url) { icon.src = url; icon.style.display = 'inline-block'; icon.onerror = () => { icon.style.display = 'none'; }; }
+      else icon.style.display = 'none';
       $('pickup-text').textContent = lootLabel(item);
       p.classList.add('show');
     },
