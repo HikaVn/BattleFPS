@@ -165,6 +165,7 @@ export class GameRoom {
     }
 
     for (const p of this.players.values()) {
+      if (p.bot) continue;  // dummies keep their placed position / state
       p.alive = true; p.hp = MAX_HP; p.shield = 0; p.kills = 0;
       p.inv = freshInventory(); p.healing = null;
       p.pos = (opts && opts.spawn) ? { x: opts.spawn.x, y: 1.6, z: opts.spawn.z } : randomSpawn();

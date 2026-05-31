@@ -343,17 +343,44 @@ export class Game {
     if (!this.gun) return;
     while (this.gun.children.length) this.gun.remove(this.gun.children[0]);
     const w = WEAPONS[this.inv.current] || WEAPONS.pistol;
-    const mat = new THREE.MeshStandardMaterial({ color: 0x222831 });
-    const accent = new THREE.MeshStandardMaterial({ color: w.color });
-    // barrel length scales loosely with range
-    const len = 0.5 + Math.min(1.2, w.range / 300);
-    const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, len), mat);
-    barrel.position.set(0.32, -0.28, -0.5 - len / 2);
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.5), accent);
-    body.position.set(0.32, -0.32, -0.4);
-    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 0.16), mat);
-    grip.position.set(0.32, -0.5, -0.3);
-    this.gun.add(barrel); this.gun.add(body); this.gun.add(grip);
+
+    // Weapon viewmodel: the generated PNG mapped onto a camera-facing plane.
+    // Falls back to a simple box model if the texture is missing.
+    const url = lootImage('weapon', this.inv.current);
+    let usedTexture = false;
+    if (url) {
+      const tex = loadItemTexture(url);
+      if (tex) {
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, side: THREE.DoubleSide });
+        // wide plane so the side-on gun art reads clearly in the lower-right
+        const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.5), mat);
+        plane.position.set(0.34, -0.34, -0.78);
+        plane.renderOrder = 10;
+        this.gun.add(plane);
+        usedTexture = true;
+      }
+    }
+    if (!usedTexture) {
+      const mat = new THREE.MeshStandardMaterial({ color: 0x222831 });
+      const accent = new THREE.MeshStandardMaterial({ color: w.color });
+      const len = 0.5 + Math.min(1.2, w.range / 300);
+      const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, len), mat);
+      barrel.position.set(0.32, -0.28, -0.5 - len / 2);
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.18, 0.5), accent);
+      body.position.set(0.32, -0.32, -0.4);
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.3, 0.16), mat);
+      grip.position.set(0.32, -0.5, -0.3);
+      this.gun.add(barrel); this.gun.add(body); this.gun.add(grip);
+    }
+
+    // Muzzle flash sprite at the barrel tip — hidden until a shot fires.
+    const flashMat = new THREE.SpriteMaterial({ color: 0xffd86b, transparent: true, opacity: 0, depthTest: false, blending: THREE.AdditiveBlending });
+    this.muzzle = new THREE.Sprite(flashMat);
+    this.muzzle.scale.set(0.5, 0.5, 0.5);
+    this.muzzle.position.set(0.34, -0.3, -1.25);
+    this.muzzle.renderOrder = 11;
+    this.gun.add(this.muzzle);
   }
 
   // ---- remote players -----------------------------------------------------
@@ -560,14 +587,51 @@ export class Game {
     if (hitThisShot.size && this.cb.onHitConfirm) this.cb.onHitConfirm();
 
     if (this.gun) this.gun.position.z = 0.12;
+    if (this.muzzle) { this.muzzle.material.opacity = 1; this.muzzle.scale.setScalar(0.35 + Math.random() * 0.3); }
   }
 
   _spawnTracer(a, b, color) {
-    const geo = new THREE.BufferGeometry().setFromPoints([a, b]);
-    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 });
-    const line = new THREE.Line(geo, mat);
-    this.scene.add(line);
-    this.tracers.push({ line, life: 0.08 });
+    const dir = b.clone().sub(a);
+    const dist = dir.length();
+    if (dist < 0.001) return;
+    dir.normalize();
+    const mid = a.clone().add(b).multiplyScalar(0.5);
+
+    // Glowing beam: a thin cylinder oriented along the shot, additively blended
+    // so it reads as a bright streak. Much more visible than a 1px line.
+    const beamGeo = new THREE.CylinderGeometry(0.05, 0.05, dist, 6, 1, true);
+    const beamMat = new THREE.MeshBasicMaterial({
+      color, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const beam = new THREE.Mesh(beamGeo, beamMat);
+    beam.position.copy(mid);
+    // cylinder's default axis is +Y; rotate it to align with the shot direction
+    beam.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    this.scene.add(beam);
+
+    // A bright "bullet" round that streaks from the muzzle to the impact point.
+    const dotMat = new THREE.SpriteMaterial({
+      color: 0xffffff, transparent: true, opacity: 1, depthTest: true,
+      blending: THREE.AdditiveBlending,
+    });
+    const dot = new THREE.Sprite(dotMat);
+    dot.scale.set(0.4, 0.4, 0.4);
+    dot.position.copy(a);
+    this.scene.add(dot);
+
+    // Impact flash at the hit point.
+    const hitMat = new THREE.SpriteMaterial({
+      color, transparent: true, opacity: 0, depthTest: false, blending: THREE.AdditiveBlending,
+    });
+    const hit = new THREE.Sprite(hitMat);
+    hit.scale.set(0.8, 0.8, 0.8);
+    hit.position.copy(b);
+    this.scene.add(hit);
+
+    this.tracers.push({
+      beam, dot, hit, from: a.clone(), to: b.clone(),
+      life: 0.18, max: 0.18, travel: 0, speed: 320, dist,
+    });
   }
 
   // ---- main loop ----------------------------------------------------------
@@ -588,6 +652,9 @@ export class Game {
 
   _updateMovement(dt) {
     if (this.gun && this.gun.position.z > 0) this.gun.position.z = Math.max(0, this.gun.position.z - dt * 0.9);
+    if (this.muzzle && this.muzzle.material.opacity > 0) {
+      this.muzzle.material.opacity = Math.max(0, this.muzzle.material.opacity - dt * 18);
+    }
 
     const canMove = this.alive && this.locked && !this.healing;
     if (canMove) {
@@ -669,11 +736,29 @@ export class Game {
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const tr = this.tracers[i];
       tr.life -= dt;
-      tr.line.material.opacity = Math.max(0, tr.life / 0.08) * 0.9;
+      const f = Math.max(0, tr.life / tr.max);   // 1 -> 0
+
+      // beam streak fades out
+      tr.beam.material.opacity = f * 0.85;
+
+      // bullet round travels along the path, then disappears at impact
+      tr.travel += tr.speed * dt;
+      if (tr.travel < tr.dist) {
+        const p = tr.from.clone().lerp(tr.to, tr.travel / tr.dist);
+        tr.dot.position.copy(p);
+        tr.dot.material.opacity = 1;
+      } else {
+        tr.dot.material.opacity = 0;
+        // trigger impact flash once the round arrives
+        tr.hit.material.opacity = Math.min(1, f * 2);
+      }
+
       if (tr.life <= 0) {
-        this.scene.remove(tr.line);
-        tr.line.geometry.dispose();
-        tr.line.material.dispose();
+        for (const o of [tr.beam, tr.dot, tr.hit]) {
+          this.scene.remove(o);
+          if (o.geometry) o.geometry.dispose();
+          if (o.material) o.material.dispose();
+        }
         this.tracers.splice(i, 1);
       }
     }
