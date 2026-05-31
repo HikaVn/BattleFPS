@@ -1,0 +1,17 @@
+{
+  "name": "battlefps",
+  "version": "0.1.0",
+  "description": "Apex-like browser multiplayer FPS with rooms",
+  "type": "module",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node server/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
