@@ -58,6 +58,7 @@ export class GameRoom {
     this.ring = null;
     this.tickTimer = null;
     this.loot = new Map();            // lootId -> loot item
+    this.tutorial = false;            // solo practice: no ring, no gameover, bots respawn
   }
 
   // ---- transport helpers --------------------------------------------------
@@ -133,27 +134,62 @@ export class GameRoom {
   lootArray() { return [...this.loot.values()]; }
 
   // ---- match lifecycle ----------------------------------------------------
-  start() {
+  // opts (optional): { tutorial: bool, loot: [{type,key,amount,x,z}], spawn: {x,z} }
+  start(opts = null) {
     if (this.phase === 'playing') return;
     this.phase = 'playing';
-    this.spawnLoot();
-    const cx = (Math.random() * 2 - 1) * MAP_SIZE * 0.2;
-    const cz = (Math.random() * 2 - 1) * MAP_SIZE * 0.2;
-    this.ring = {
-      x: cx, z: cz,
-      radius: MAP_SIZE * 0.75, targetRadius: MAP_SIZE * 0.75,
-      minRadius: 12, shrinkRate: 0, nextShrink: Date.now() + 15000,
-    };
+    this.tutorial = !!(opts && opts.tutorial);
+
+    if (opts && Array.isArray(opts.loot)) {
+      // Curated loot for the tutorial: deterministic positions.
+      this.loot.clear();
+      for (const it of opts.loot) {
+        const id = String(nextLootId++);
+        this.loot.set(id, { id, type: it.type, key: it.key, amount: it.amount || 0, x: it.x, z: it.z });
+      }
+    } else {
+      this.spawnLoot();
+    }
+
+    if (this.tutorial) {
+      // No closing ring in the dojo.
+      this.ring = null;
+    } else {
+      const cx = (Math.random() * 2 - 1) * MAP_SIZE * 0.2;
+      const cz = (Math.random() * 2 - 1) * MAP_SIZE * 0.2;
+      this.ring = {
+        x: cx, z: cz,
+        radius: MAP_SIZE * 0.75, targetRadius: MAP_SIZE * 0.75,
+        minRadius: 12, shrinkRate: 0, nextShrink: Date.now() + 15000,
+      };
+    }
+
     for (const p of this.players.values()) {
       p.alive = true; p.hp = MAX_HP; p.shield = 0; p.kills = 0;
       p.inv = freshInventory(); p.healing = null;
-      p.pos = randomSpawn(); p.rot = { x: 0, y: 0 };
+      p.pos = (opts && opts.spawn) ? { x: opts.spawn.x, y: 1.6, z: opts.spawn.z } : randomSpawn();
+      p.rot = { x: 0, y: 0 };
       this.send(p, {
         t: 'started', mapSize: MAP_SIZE, spawn: p.pos, ring: this.ring,
-        loot: this.lootArray(), inv: p.inv,
+        loot: this.lootArray(), inv: p.inv, tutorial: this.tutorial,
       });
     }
     this.tickTimer = setInterval(() => this.tick(), 1000 / TICK_RATE);
+  }
+
+  // Add a stationary training dummy (tutorial only). It is a normal player in
+  // every respect except it never moves and is flagged so the client can label
+  // it. Returns its id.
+  addDummy(id, name, pos) {
+    const bot = {
+      id: String(id), name, bot: true,
+      pos: { x: pos.x, y: 1.6, z: pos.z }, rot: { x: 0, y: 0 },
+      hp: MAX_HP, shield: 0, alive: true, kills: 0, moving: false,
+      inv: freshInventory(), healing: null,
+      spawn: { x: pos.x, z: pos.z },
+    };
+    this.players.set(bot.id, bot);
+    return bot.id;
   }
 
   tick() {
@@ -179,15 +215,30 @@ export class GameRoom {
       if (p.alive && p.healing && now >= p.healing.done) this.finishHeal(p);
     }
 
+    // Tutorial: respawn downed dummies after a short delay so the player can
+    // keep practising.
+    if (this.tutorial) {
+      for (const p of this.players.values()) {
+        if (p.bot && !p.alive && p.downAt && now - p.downAt >= 2500) {
+          p.alive = true; p.hp = MAX_HP; p.shield = 0; p.healing = null;
+          p.pos = { x: p.spawn.x, y: 1.6, z: p.spawn.z };
+          p.downAt = 0;
+        }
+      }
+    }
+
     this.broadcast({
       t: 'state',
       ring: ring ? { x: ring.x, z: ring.z, radius: Math.round(ring.radius * 100) / 100 } : null,
       players: [...this.players.values()].map((p) => ({
         id: p.id, name: p.name, pos: p.pos, rot: p.rot, hp: p.hp, shield: p.shield,
-        alive: p.alive, kills: p.kills, moving: p.moving,
+        alive: p.alive, kills: p.kills, moving: p.moving, bot: !!p.bot,
         weapon: p.inv ? p.inv.current : 'pistol', healing: !!p.healing,
       })),
     });
+
+    // No win condition in the tutorial dojo.
+    if (this.tutorial) return;
 
     const alive = [...this.players.values()].filter((p) => p.alive);
     if (this.phase === 'playing' && this.players.size >= 2 && alive.length <= 1) {
@@ -220,7 +271,8 @@ export class GameRoom {
     if (victim.hp <= 0) {
       victim.hp = 0; victim.alive = false; victim.healing = null;
       if (attacker && attacker !== victim) attacker.kills += 1;
-      this.dropDeathLoot(victim);
+      if (victim.bot) victim.downAt = Date.now();  // tutorial dummies respawn
+      else this.dropDeathLoot(victim);
       this.broadcast({
         t: 'kill', victim: victim.id, victimName: victim.name,
         killer: attacker ? attacker.id : null, killerName: attacker ? attacker.name : cause,

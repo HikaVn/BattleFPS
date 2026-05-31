@@ -243,3 +243,28 @@ button.secondary { background: #21262d; color: #e6edf3; border: 1px solid rgba(2
   pointer-events: auto; cursor: pointer; display: none; text-align: center;
 }
 .lock-hint.show { display: block; }
+
+/* ---------- Tutorial guidance ---------- */
+#tutorial-panel {
+  position: fixed; left: 50%; top: 18px; transform: translateX(-50%);
+  width: min(560px, 92vw);
+  background: rgba(12, 18, 26, 0.92);
+  border: 1px solid rgba(46, 201, 138, 0.5);
+  border-radius: 12px; padding: 14px 18px;
+  z-index: 23; display: none; text-align: center;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+}
+#tutorial-panel.show { display: block; }
+#tut-step { font-size: 11px; letter-spacing: 1px; color: #2ec98a; font-weight: 700; }
+#tut-title { font-size: 19px; font-weight: 800; margin: 2px 0 4px; color: #fff; }
+#tut-desc { font-size: 13px; color: #cdd9e5; line-height: 1.5; }
+#tut-desc b { color: var(--accent2); }
+#tut-progress { font-size: 13px; color: #2ec98a; margin-top: 8px; min-height: 18px; font-weight: 700; }
+#tut-skip {
+  margin-top: 10px; width: auto; padding: 6px 14px; font-size: 12px;
+  background: #21262d; color: #8b949e; border: 1px solid rgba(255,255,255,0.1);
+  pointer-events: auto;
+}
+#tut-skip:hover { color: #e6edf3; }
+
+/* tutorial completion banner reuses #center-msg */

@@ -65,8 +65,25 @@ export class Net {
   // on the first create/join so we can probe for a backend then fall back.
   connect() { this.connected = true; return Promise.resolve(); }
 
+  // ---- solo mode (offline tutorial / practice) ----------------------------
+  // Runs a GameRoom entirely in this browser with no networking. Returns the
+  // room so the caller (tutorial) can add dummies and start with custom opts.
+  startSolo(name) {
+    this.mode = 'solo';
+    this.connected = true;
+    this.isHost = true;
+    this.room = new GameRoom('SOLO', {
+      // Only the local player exists on the wire; deliver everything to our UI.
+      broadcast: (msg) => this._emit(msg),
+      sendTo: (id, msg) => { if (id === HOST_ID) this._emit(msg); },
+    });
+    this.room.addPlayer(HOST_ID, sanitizeName(name));
+    return this.room;
+  }
+
   // ---- public send --------------------------------------------------------
   send(obj) {
+    if (this.mode === 'solo') { if (this.room) this.room.handleMessage(HOST_ID, obj); return; }
     if (obj.t === 'create') { this._begin('create', obj); return; }
     if (obj.t === 'join') { this._begin('join', obj); return; }
 

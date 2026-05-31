@@ -25,6 +25,8 @@
       <label for="name-input">プレイヤー名</label>
       <input type="text" id="name-input" maxlength="16" placeholder="名前を入力" />
 
+      <button id="tutorial-btn" style="background:linear-gradient(90deg,#2ec98a,#1f9fff);color:#04210f;">🎯 ソロチュートリアル（1人で練習）</button>
+
       <button id="create-btn">ルームを作成</button>
 
       <label for="room-input">ルームコードで参加</label>
@@ -35,6 +37,7 @@
 
       <div class="error" id="menu-error"></div>
       <div class="hint">
+        <b>初めての人は「ソロチュートリアル」から！</b> 1人で操作を練習できます。<br />
         移動: <b>WASD</b> / ジャンプ: <b>Space</b> / 射撃: <b>左クリック</b><br />
         武器切替: <b>1 2 3 / ホイール</b> / リロード: <b>R</b> / 拾う: <b>E</b><br />
         回復: <b>Z</b>注射 <b>C</b>メドキット / シールド: <b>X</b>セル <b>V</b>バッテリー<br />
@@ -101,6 +104,15 @@
     <div id="chat">
       <div id="chat-log"></div>
       <input type="text" id="chat-input" maxlength="200" placeholder="メッセージを入力して Enter" />
+    </div>
+
+    <!-- tutorial guidance panel (solo only) -->
+    <div id="tutorial-panel">
+      <div id="tut-step">ステップ</div>
+      <div id="tut-title">タイトル</div>
+      <div id="tut-desc">説明</div>
+      <div id="tut-progress"></div>
+      <button id="tut-skip">このステップをスキップ ▸</button>
     </div>
   </div>
 
