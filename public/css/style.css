@@ -271,70 +271,86 @@ button.secondary { background: #21262d; color: #e6edf3; border: 1px solid rgba(2
 
 /* ============================================================
    Mobile / touch controls
+   Layout is split into non-overlapping thumb zones:
+     - left-bottom : movement joystick
+     - left-mid    : 2x2 heal/shield buttons (above the joystick)
+     - right-bottom: big fire button + a vertical stack of action buttons
+     - right side  : transparent look/aim drag zone (under all buttons)
    ============================================================ */
 #touch-controls { display: none; }
 
+/* Look / aim zone — sits UNDER every button (low z-index). */
+#tc-look {
+  position: fixed; right: 0; top: 64px; bottom: 0; width: 60%;
+  z-index: 30; touch-action: none;
+}
+
 /* Movement joystick (bottom-left) */
 #tc-joystick {
-  position: fixed; left: 22px; bottom: 26px;
-  width: 132px; height: 132px; border-radius: 50%;
-  background: rgba(255,255,255,0.07);
-  border: 2px solid rgba(255,255,255,0.18);
-  z-index: 40; touch-action: none;
+  position: fixed; left: 18px; bottom: 22px;
+  width: 120px; height: 120px; border-radius: 50%;
+  background: rgba(255,255,255,0.06);
+  border: 2px solid rgba(255,255,255,0.16);
+  z-index: 41; touch-action: none;
 }
 #tc-stick {
   position: absolute; left: 50%; top: 50%;
-  width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
-  background: rgba(255,255,255,0.28);
+  width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
+  background: rgba(255,255,255,0.26);
   border: 2px solid rgba(255,255,255,0.5);
   pointer-events: none;
 }
 
-/* Look / aim zone covers the right ~55% of the screen, below the top HUD */
-#tc-look {
-  position: fixed; right: 0; top: 70px; bottom: 0; width: 58%;
-  z-index: 31; touch-action: none;
-}
-
-/* Action buttons */
+/* Action buttons (round) */
 .tc-btn {
-  position: fixed; z-index: 41; margin: 0;
-  width: 86px; height: 86px; border-radius: 50%;
-  font-size: 13px; font-weight: 800; line-height: 1.1;
-  color: #fff; border: 2px solid rgba(255,255,255,0.35);
-  background: rgba(255,90,60,0.30);
+  position: fixed; z-index: 42; margin: 0; padding: 0;
+  border-radius: 50%; font-size: 12px; font-weight: 800; line-height: 1.05;
+  color: #fff; border: 2px solid rgba(255,255,255,0.32);
+  background: rgba(255,255,255,0.14);
   display: flex; align-items: center; justify-content: center;
   text-align: center; touch-action: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
-.tc-btn.tc-press { filter: brightness(1.4); transform: scale(0.94); }
-.tc-fire   { right: 26px; bottom: 116px; background: rgba(255,60,40,0.4); width: 100px; height: 100px; }
-.tc-jump   { right: 140px; bottom: 40px; background: rgba(77,195,255,0.32); }
-.tc-btn.tc-small { width: 62px; height: 62px; font-size: 12px; background: rgba(255,255,255,0.16); }
-.tc-reload { right: 26px; bottom: 226px; }
-.tc-pickup { right: 120px; bottom: 158px; background: rgba(46,201,138,0.34); }
-.tc-swap   { right: 200px; bottom: 130px; }
+.tc-btn.tc-press { filter: brightness(1.4); transform: scale(0.93); }
 
-/* Heal quick-buttons row (top-center-ish, under the top HUD) */
+/* big fire button, bottom-right corner */
+.tc-fire { right: 18px; bottom: 26px; width: 96px; height: 96px;
+  background: rgba(255,60,40,0.42); border-color: rgba(255,120,100,0.6); font-size: 15px; }
+
+/* vertical stack of smaller buttons just left of fire */
+.tc-btn.tc-small { width: 60px; height: 60px; right: 122px; }
+.tc-jump   { bottom: 28px;  background: rgba(77,195,255,0.34); }
+.tc-pickup { bottom: 96px;  background: rgba(46,201,138,0.34); }
+.tc-reload { bottom: 164px; }
+.tc-swap   { bottom: 232px; }
+
+/* heal / shield buttons in a single row, left side just above the joystick */
 #tc-heals {
-  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
-  display: flex; gap: 8px; z-index: 41;
+  position: fixed; left: 18px; bottom: 152px;
+  display: flex; gap: 8px;
+  z-index: 42;
 }
 .tc-heal {
-  width: 50px; height: 50px; border-radius: 10px; margin: 0;
-  font-size: 15px; font-weight: 800; color: #04210f;
-  background: rgba(57,211,83,0.85); border: 1px solid rgba(255,255,255,0.4);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  line-height: 1; touch-action: none;
+  width: 48px; height: 48px; border-radius: 10px; margin: 0; padding: 0;
+  position: relative; border: 1px solid rgba(255,255,255,0.4);
+  background: rgba(57,211,83,0.85) center/70% no-repeat;
+  background-blend-mode: normal; touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
-.tc-heal:nth-child(3), .tc-heal:nth-child(4) { background: rgba(77,195,255,0.85); }
-.tc-heal .tc-count { font-size: 11px; opacity: 0.9; }
-.tc-heal.tc-empty { opacity: 0.4; }
+.tc-heal[data-kind="shield"] { background-color: rgba(77,195,255,0.85); }
+.tc-heal .tc-count {
+  position: absolute; right: -2px; top: -6px;
+  min-width: 16px; height: 16px; line-height: 16px; border-radius: 8px;
+  font-size: 11px; font-weight: 800; color: #fff; background: #1a1f26;
+  border: 1px solid rgba(255,255,255,0.5);
+}
+.tc-heal.tc-empty { opacity: 0.35; }
 .tc-heal.tc-press { filter: brightness(1.3); }
 
-/* When touch controls are active, hide pointer-lock hint and shrink HUD a bit */
+/* When touch controls are active, hide pointer-lock hint + tidy the HUD */
 body.touch-active #lock-hint { display: none !important; }
 body.touch-active #chat { display: none; }            /* no on-screen keyboard chat mid-fight */
-body.touch-active #minimap { width: 96px; height: 96px; right: 12px; bottom: auto; top: 70px; }
+body.touch-active #minimap { width: 88px; height: 88px; right: 10px; bottom: auto; top: 60px; }
 
 /* ---------- Small screens (phones) ---------- */
 @media (max-width: 820px), (pointer: coarse) {
@@ -342,23 +358,34 @@ body.touch-active #minimap { width: 96px; height: 96px; right: 12px; bottom: aut
   .logo { font-size: 28px; }
   button { padding: 14px; font-size: 16px; }          /* larger tap targets */
   input[type="text"] { padding: 14px; font-size: 16px; } /* 16px avoids iOS zoom */
+}
 
-  .hud-bottom-left { left: 12px; bottom: 130px; }      /* clear of joystick */
-  .shield-bar, .health-bar { width: 190px; }
-  #weapon-hud { right: 12px; bottom: 120px; min-width: 0; }
-  #ammo-line #ammo-mag { font-size: 24px; }
-  #heal-tray { display: none; }                        /* replaced by tc-heals */
-  #weapon-slots { display: none; }
-  .hud-top-right { top: 10px; right: 12px; }
-  #killfeed { top: 64px; right: 12px; }
-  #tutorial-panel { top: 8px; width: 94vw; padding: 10px 12px; }
+/* HUD repositioning only when touch controls are on, so desktop is untouched */
+body.touch-active .hud-bottom-left {     /* HP/shield: low-left, above heals row */
+  left: 16px; bottom: 212px;
+}
+body.touch-active .shield-bar,
+body.touch-active .health-bar { width: 168px; }
+body.touch-active .health-label { font-size: 12px; }
+body.touch-active #weapon-hud {          /* weapon/ammo: above the fire cluster */
+  right: 16px; bottom: 304px; min-width: 0;
+}
+body.touch-active #ammo-line #ammo-mag { font-size: 22px; }
+body.touch-active #heal-tray { display: none; }       /* replaced by #tc-heals */
+body.touch-active #weapon-slots { display: none; }
+body.touch-active .hud-top-right { top: 8px; right: 12px; font-size: 12px; }
+body.touch-active #killfeed { top: 60px; right: 12px; }
+body.touch-active #ring-info { top: 8px; font-size: 12px; }
+
+@media (pointer: coarse) {
+  #tutorial-panel { top: 6px; width: 96vw; padding: 9px 12px; }
   #tut-title { font-size: 16px; }
   #tut-desc { font-size: 12px; }
+  #tut-step { font-size: 10px; }
+  #tut-skip { padding: 8px 16px; font-size: 13px; }
 }
 
-/* landscape phones: keep panels compact vertically */
-@media (max-height: 480px) and (pointer: coarse) {
-  .hint { display: none; }
-  .panel { padding: 14px; }
-  label { margin: 8px 0 4px; }
-}
+/* During the solo tutorial on touch, the wide guidance panel covers the top
+   corners — hide the (irrelevant) BR stats and killfeed there. */
+body.touch-active.tutorial-active .hud-top-right,
+body.touch-active.tutorial-active #killfeed { display: none; }

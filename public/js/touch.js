@@ -48,19 +48,24 @@ export class TouchControls {
   _build() {
     const root = document.createElement('div');
     root.id = 'touch-controls';
+    // Heal/shield buttons use the generated item icons as their background.
+    const healBtn = (id, kind, img) =>
+      `<button class="tc-heal" data-kind="${kind}" id="tc-heal-${id}"
+        style="background-image:url('assets/items/${img}')">
+        <span class="tc-count">0</span></button>`;
     root.innerHTML = `
-      <div id="tc-joystick"><div id="tc-stick"></div></div>
       <div id="tc-look"></div>
+      <div id="tc-joystick"><div id="tc-stick"></div></div>
       <button class="tc-btn tc-fire" id="tc-fire">射撃</button>
-      <button class="tc-btn tc-jump" id="tc-jump">ジャンプ</button>
-      <button class="tc-btn tc-small tc-reload" id="tc-reload">R</button>
-      <button class="tc-btn tc-small tc-pickup" id="tc-pickup">拾う<br>E</button>
+      <button class="tc-btn tc-small tc-jump" id="tc-jump">ジャンプ</button>
+      <button class="tc-btn tc-small tc-pickup" id="tc-pickup">拾う</button>
+      <button class="tc-btn tc-small tc-reload" id="tc-reload">リロード</button>
       <button class="tc-btn tc-small tc-swap" id="tc-swap">武器</button>
       <div id="tc-heals">
-        <button class="tc-heal" id="tc-heal-syringe">注<span class="tc-count">0</span></button>
-        <button class="tc-heal" id="tc-heal-medkit">メ<span class="tc-count">0</span></button>
-        <button class="tc-heal" id="tc-heal-cell">セ<span class="tc-count">0</span></button>
-        <button class="tc-heal" id="tc-heal-battery">バ<span class="tc-count">0</span></button>
+        ${healBtn('syringe', 'hp',     'heal_syringe.png')}
+        ${healBtn('medkit',  'hp',     'heal_medkit.png')}
+        ${healBtn('cell',    'shield', 'shield_cell.png')}
+        ${healBtn('battery', 'shield', 'shield_battery.png')}
       </div>`;
     document.body.appendChild(root);
     this.root = root;
