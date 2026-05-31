@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
+import { WEAPONS, HEALS, MAX_AMMO, MAX_HP, MAX_SHIELD, lootCatalogue } from '../public/js/shared.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -49,8 +50,8 @@ const server = http.createServer((req, res) => {
 // ---------------------------------------------------------------------------
 const MAP_SIZE = 200;          // arena is MAP_SIZE x MAP_SIZE centred on origin
 const TICK_RATE = 20;          // network state broadcasts per second
-const MAX_HP = 100;
 const RING_DAMAGE = 5;         // hp lost per tick while outside the ring
+const LOOT_COUNT = 70;         // number of ground loot items spawned per match
 
 /** @type {Map<string, Room>} */
 const rooms = new Map();
@@ -66,6 +67,7 @@ function makeRoomCode() {
 }
 
 let nextPlayerId = 1;
+let nextLootId = 1;
 
 function randomSpawn() {
   const r = MAP_SIZE * 0.42;
@@ -73,6 +75,17 @@ function randomSpawn() {
     x: (Math.random() * 2 - 1) * r,
     y: 1.6,
     z: (Math.random() * 2 - 1) * r,
+  };
+}
+
+// A fresh inventory: every player starts with a pistol and a little of everything.
+function freshInventory() {
+  return {
+    weapons: ['pistol'],           // owned weapon ids
+    current: 'pistol',             // equipped weapon id
+    mag: { pistol: WEAPONS.pistol.mag },
+    ammo: { light: 30, shell: 0, heavy: 0 },
+    heals: { syringe: 1, medkit: 0, cell: 1, battery: 0 },
   };
 }
 
@@ -85,6 +98,7 @@ class Room {
     this.ring = null;
     this.tickTimer = null;
     this.startTime = 0;
+    this.loot = new Map();    // lootId -> loot item
   }
 
   broadcast(obj, exceptId = null) {
@@ -95,20 +109,48 @@ class Room {
     }
   }
 
+  send(player, obj) {
+    if (player.ws.readyState === player.ws.OPEN) player.ws.send(JSON.stringify(obj));
+  }
+
   playerList() {
     return [...this.players.values()].map((p) => ({
       id: p.id,
       name: p.name,
       hp: p.hp,
+      shield: p.shield,
       alive: p.alive,
       kills: p.kills,
     }));
+  }
+
+  spawnLoot() {
+    this.loot.clear();
+    const cat = lootCatalogue();
+    for (let i = 0; i < LOOT_COUNT; i++) {
+      const pick = cat[Math.floor(Math.random() * cat.length)];
+      const id = String(nextLootId++);
+      const r = MAP_SIZE * 0.88;
+      this.loot.set(id, {
+        id,
+        type: pick.type,
+        key: pick.key,
+        amount: pick.amount || 0,
+        x: (Math.random() * 2 - 1) * r,
+        z: (Math.random() * 2 - 1) * r,
+      });
+    }
+  }
+
+  lootArray() {
+    return [...this.loot.values()];
   }
 
   start() {
     if (this.phase === 'playing') return;
     this.phase = 'playing';
     this.startTime = Date.now();
+    this.spawnLoot();
     // Ring starts covering the whole map and shrinks toward a random point.
     const cx = (Math.random() * 2 - 1) * MAP_SIZE * 0.2;
     const cz = (Math.random() * 2 - 1) * MAP_SIZE * 0.2;
@@ -124,10 +166,20 @@ class Room {
     for (const p of this.players.values()) {
       p.alive = true;
       p.hp = MAX_HP;
+      p.shield = 0;
       p.kills = 0;
+      p.inv = freshInventory();
+      p.healing = null;
       p.pos = randomSpawn();
       p.rot = { x: 0, y: 0 };
-      p.ws.send(JSON.stringify({ t: 'started', mapSize: MAP_SIZE, spawn: p.pos, ring: this.ring }));
+      this.send(p, {
+        t: 'started',
+        mapSize: MAP_SIZE,
+        spawn: p.pos,
+        ring: this.ring,
+        loot: this.lootArray(),
+        inv: p.inv,
+      });
     }
     this.tickTimer = setInterval(() => this.tick(), 1000 / TICK_RATE);
   }
@@ -156,6 +208,13 @@ class Room {
       }
     }
 
+    // Resolve in-progress healing.
+    for (const p of this.players.values()) {
+      if (p.alive && p.healing && now >= p.healing.done) {
+        this.finishHeal(p);
+      }
+    }
+
     // Broadcast world state.
     this.broadcast({
       t: 'state',
@@ -166,9 +225,12 @@ class Room {
         pos: p.pos,
         rot: p.rot,
         hp: p.hp,
+        shield: p.shield,
         alive: p.alive,
         kills: p.kills,
         moving: p.moving,
+        weapon: p.inv ? p.inv.current : 'pistol',
+        healing: !!p.healing,
       })),
     });
 
@@ -184,22 +246,33 @@ class Room {
         if (this.players.size > 0) {
           this.phase = 'lobby';
           this.ring = null;
+          this.loot.clear();
           this.broadcast({ t: 'roomUpdate', players: this.playerList(), hostId: this.hostId, phase: this.phase });
         }
       }, 8000);
     }
   }
 
+  // Apply damage; shield absorbs first, then health.
   damagePlayer(victim, dmg, attacker, cause) {
     if (!victim.alive) return;
-    victim.hp -= dmg;
-    if (victim.ws.readyState === victim.ws.OPEN) {
-      victim.ws.send(JSON.stringify({ t: 'hurt', hp: victim.hp, from: attacker ? attacker.name : cause }));
+    // taking damage cancels healing
+    if (victim.healing) { victim.healing = null; this.send(victim, { t: 'healCancel' }); }
+    let remaining = dmg;
+    if (victim.shield > 0) {
+      const absorbed = Math.min(victim.shield, remaining);
+      victim.shield -= absorbed;
+      remaining -= absorbed;
     }
+    victim.hp -= remaining;
+    this.send(victim, { t: 'hurt', hp: victim.hp, shield: victim.shield, from: attacker ? attacker.name : cause });
     if (victim.hp <= 0) {
       victim.hp = 0;
       victim.alive = false;
+      victim.healing = null;
       if (attacker && attacker !== victim) attacker.kills += 1;
+      // Drop the victim's gear as a loot beacon at their position.
+      this.dropDeathLoot(victim);
       this.broadcast({
         t: 'kill',
         victim: victim.id,
@@ -208,6 +281,39 @@ class Room {
         killerName: attacker ? attacker.name : cause,
       });
     }
+  }
+
+  dropDeathLoot(victim) {
+    if (!victim.inv) return;
+    // Drop the current weapon (if not the starter pistol) and some ammo.
+    const drops = [];
+    for (const w of victim.inv.weapons) {
+      if (w !== 'pistol') drops.push({ type: 'weapon', key: w, amount: 0 });
+    }
+    drops.push({ type: 'ammo', key: 'light', amount: 40 });
+    if (victim.shield > 0) drops.push({ type: 'shield', key: 'cell', amount: 0 });
+    let i = 0;
+    for (const d of drops) {
+      const id = String(nextLootId++);
+      const item = {
+        id, type: d.type, key: d.key, amount: d.amount,
+        x: victim.pos.x + (i - drops.length / 2) * 1.4,
+        z: victim.pos.z + 0.5,
+      };
+      this.loot.set(id, item);
+      this.broadcast({ t: 'lootSpawn', item });
+      i++;
+    }
+  }
+
+  finishHeal(player) {
+    const h = player.healing;
+    player.healing = null;
+    const def = HEALS[h.key];
+    if (!def) return;
+    if (def.kind === 'hp') player.hp = Math.min(MAX_HP, player.hp + def.amount);
+    else player.shield = Math.min(MAX_SHIELD, player.shield + def.amount);
+    this.send(player, { t: 'healDone', hp: player.hp, shield: player.shield, inv: player.inv });
   }
 }
 
@@ -225,9 +331,12 @@ wss.on('connection', (ws) => {
     pos: { x: 0, y: 1.6, z: 0 },
     rot: { x: 0, y: 0 },
     hp: MAX_HP,
+    shield: 0,
     alive: false,
     kills: 0,
     moving: false,
+    inv: null,
+    healing: null,
   };
 
   ws.on('message', (raw) => {
@@ -302,7 +411,7 @@ function handleMessage(player, msg) {
       const room = player.room;
       if (!room || !player.alive) return;
       // Broadcast a tracer so everyone can render it.
-      room.broadcast({ t: 'shoot', id: player.id, origin: msg.origin, dir: msg.dir }, player.id);
+      room.broadcast({ t: 'shoot', id: player.id, origin: msg.origin, dir: msg.dir, weapon: player.inv.current }, player.id);
       break;
     }
     case 'hit': {
@@ -310,11 +419,84 @@ function handleMessage(player, msg) {
       if (!room || !player.alive) return;
       const target = room.players.get(String(msg.target));
       if (!target || !target.alive || target === player) return;
-      // Loose server validation: target must actually be within weapon range.
+      const weapon = WEAPONS[player.inv.current] || WEAPONS.pistol;
+      // Loose server validation: target must be within the weapon's range.
       const dist = Math.hypot(player.pos.x - target.pos.x, player.pos.y - target.pos.y, player.pos.z - target.pos.z);
-      if (dist > 250) return;
-      const dmg = msg.head ? 50 : 20;
+      if (dist > weapon.range * 1.3 + 5) return;
+      let dmg = weapon.damage;
+      if (msg.head) dmg = Math.round(dmg * weapon.head);
       room.damagePlayer(target, dmg, player, null);
+      break;
+    }
+    case 'switch': {
+      const room = player.room;
+      if (!room || !player.alive || !player.inv) return;
+      const w = String(msg.weapon || '');
+      if (player.inv.weapons.includes(w)) {
+        player.inv.current = w;
+        player.healing = null; // switching cancels heal
+        room.send(player, { t: 'invUpdate', inv: player.inv });
+      }
+      break;
+    }
+    case 'reload': {
+      const room = player.room;
+      if (!room || !player.alive || !player.inv) return;
+      const wid = player.inv.current;
+      const w = WEAPONS[wid];
+      if (!w) return;
+      const have = player.inv.ammo[w.ammoType] || 0;
+      const inMag = player.inv.mag[wid] || 0;
+      const need = w.mag - inMag;
+      const take = Math.min(need, have);
+      if (take <= 0) return;
+      player.inv.mag[wid] = inMag + take;
+      player.inv.ammo[w.ammoType] = have - take;
+      room.send(player, { t: 'invUpdate', inv: player.inv });
+      break;
+    }
+    case 'spend': {
+      // Client reports it fired one shot; decrement the magazine authoritatively.
+      const room = player.room;
+      if (!room || !player.alive || !player.inv) return;
+      const wid = player.inv.current;
+      if ((player.inv.mag[wid] || 0) > 0) {
+        player.inv.mag[wid] -= 1;
+        room.send(player, { t: 'invUpdate', inv: player.inv });
+      }
+      break;
+    }
+    case 'pickup': {
+      const room = player.room;
+      if (!room || !player.alive || !player.inv) return;
+      const item = room.loot.get(String(msg.loot));
+      if (!item) return;
+      const dx = player.pos.x - item.x, dz = player.pos.z - item.z;
+      if (Math.hypot(dx, dz) > 4) return; // must be close
+      if (applyPickup(player, item)) {
+        room.loot.delete(item.id);
+        room.broadcast({ t: 'lootGone', id: item.id });
+        room.send(player, { t: 'invUpdate', inv: player.inv });
+      }
+      break;
+    }
+    case 'useHeal': {
+      const room = player.room;
+      if (!room || !player.alive || !player.inv) return;
+      const key = String(msg.key || '');
+      const def = HEALS[key];
+      if (!def) return;
+      if ((player.inv.heals[key] || 0) <= 0) return;
+      if (player.healing) return; // already healing
+      if (def.kind === 'hp' && player.hp >= MAX_HP) return;
+      if (def.kind === 'shield' && player.shield >= MAX_SHIELD) return;
+      player.inv.heals[key] -= 1;
+      player.healing = { key, done: Date.now() + def.time };
+      room.send(player, { t: 'healStart', key, time: def.time, inv: player.inv });
+      break;
+    }
+    case 'cancelHeal': {
+      if (player.healing) { player.healing = null; player.room && player.room.send(player, { t: 'healCancel' }); }
       break;
     }
     case 'chat': {
@@ -326,6 +508,60 @@ function handleMessage(player, msg) {
     }
     default:
       break;
+  }
+}
+
+// Apply a loot item to a player's inventory. Returns true if consumed.
+function applyPickup(player, item) {
+  const inv = player.inv;
+  switch (item.type) {
+    case 'weapon': {
+      if (!WEAPONS[item.key]) return false;
+      if (!inv.weapons.includes(item.key)) {
+        if (inv.weapons.length >= 3) {
+          // replace current (non-pistol) slot, otherwise append
+          const idx = inv.weapons.indexOf(inv.current);
+          if (inv.current !== 'pistol') inv.weapons[idx] = item.key;
+          else inv.weapons.push(item.key);
+        } else {
+          inv.weapons.push(item.key);
+        }
+        inv.mag[item.key] = inv.mag[item.key] || WEAPONS[item.key].mag;
+      }
+      inv.current = item.key;
+      return true;
+    }
+    case 'ammo': {
+      const cap = MAX_AMMO[item.key] || 0;
+      const cur = inv.ammo[item.key] || 0;
+      if (cur >= cap) return false;
+      inv.ammo[item.key] = Math.min(cap, cur + item.amount);
+      return true;
+    }
+    case 'heal': {
+      const def = HEALS[item.key];
+      if (!def) return false;
+      const cur = inv.heals[item.key] || 0;
+      if (cur >= def.max) return false;
+      inv.heals[item.key] = Math.min(def.max, cur + 1);
+      return true;
+    }
+    case 'shield': {
+      const def = HEALS[item.key];
+      if (!def) return false;
+      const cur = inv.heals[item.key] || 0;
+      if (cur >= def.max) return false;
+      inv.heals[item.key] = Math.min(def.max, cur + 1);
+      return true;
+    }
+    case 'armor': {
+      // Instant shield boost (body armor pickup).
+      if (player.shield >= MAX_SHIELD) return false;
+      player.shield = Math.min(MAX_SHIELD, player.shield + (item.amount || 50));
+      return true;
+    }
+    default:
+      return false;
   }
 }
 

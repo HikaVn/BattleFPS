@@ -1,6 +1,7 @@
 // App entry: wires the menu / lobby / HUD UI to the network and game engine.
 import { Net } from './net.js';
 import { Game } from './game.js';
+import { WEAPONS, HEALS } from './shared.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -122,7 +123,7 @@ function enterGame(opts) {
   if (!game) {
     game = new Game(net, makeCallbacks());
   }
-  game.build({ selfId: state.selfId, mapSize: opts.mapSize, spawn: opts.spawn, seed: state.room });
+  game.build({ selfId: state.selfId, mapSize: opts.mapSize, spawn: opts.spawn, seed: state.room, inv: opts.inv, loot: opts.loot });
   game.start();
   // require a click to lock the pointer
   $('lock-hint').classList.add('show');
@@ -137,13 +138,58 @@ function makeCallbacks() {
         ? 'linear-gradient(90deg,#39d353,#26a641)'
         : hp > 25 ? 'linear-gradient(90deg,#ffb33c,#ff8c1a)' : 'linear-gradient(90deg,#ff5a3c,#d11)';
     },
-    onAmmo: (a) => { $('ammo').textContent = a; },
+    onShield: (sh) => {
+      $('shield-num').textContent = Math.round(sh) > 0 ? '🛡' + Math.round(sh) : '';
+      $('shield-fill').style.width = Math.max(0, sh) + '%';
+    },
+    onAmmo: (mag, reserve) => {
+      $('ammo-mag').textContent = mag;
+      $('ammo-reserve').textContent = '/ ' + reserve;
+    },
     onKills: (k) => { $('kill-count').textContent = k; },
     onAlive: (n) => { $('alive-count').textContent = n; },
+    onWeapon: (inv, w) => {
+      $('weapon-name').textContent = w.name;
+      const slots = $('weapon-slots');
+      slots.innerHTML = '';
+      inv.weapons.forEach((wid, i) => {
+        const d = document.createElement('span');
+        d.className = 'wslot' + (wid === inv.current ? ' active' : '');
+        d.textContent = (i + 1) + '·' + (WEAPONS[wid] ? WEAPONS[wid].name : wid);
+        slots.append(d);
+      });
+    },
+    onHeals: (heals) => {
+      for (const key of Object.keys(HEALS)) {
+        const el = $('heal-' + key);
+        if (el) el.textContent = heals[key] || 0;
+        const item = document.querySelector(`.heal-item[data-key="${key}"]`);
+        if (item) item.classList.toggle('empty', !(heals[key] > 0));
+      }
+    },
+    onReload: (on) => { $('reload-note').textContent = on ? 'リロード中…' : ''; },
     onHurt: () => {
       const f = $('damage-flash');
       f.style.background = 'rgba(255,40,30,0.35)';
       setTimeout(() => { f.style.background = 'rgba(255,40,30,0)'; }, 120);
+    },
+    onHitConfirm: () => {
+      const c = $('crosshair');
+      c.classList.add('hit');
+      setTimeout(() => c.classList.remove('hit'), 120);
+    },
+    onNearbyLoot: (item) => {
+      const p = $('pickup-prompt');
+      if (!item) { p.classList.remove('show'); return; }
+      $('pickup-text').textContent = lootLabel(item);
+      p.classList.add('show');
+    },
+    onHealProgress: (frac, key) => {
+      const bar = $('heal-bar');
+      if (frac <= 0) { bar.classList.remove('show'); return; }
+      bar.classList.add('show');
+      $('heal-bar-fill').style.width = (frac * 100) + '%';
+      $('heal-bar-label').textContent = key && HEALS[key] ? HEALS[key].name + ' 使用中…' : '回復中…';
     },
     onRing: (inside, radius) => {
       $('ring-info').textContent = inside ? '' : '⚠ リング外！中心へ移動せよ';
@@ -152,6 +198,16 @@ function makeCallbacks() {
       $('lock-hint').classList.toggle('show', !locked && game && game.alive);
     },
   };
+}
+
+function lootLabel(item) {
+  if (item.type === 'weapon') return (WEAPONS[item.key] || {}).name || item.key;
+  if (item.type === 'ammo') {
+    const names = { light: 'ライト弾', shell: 'シェル', heavy: 'ヘビー弾' };
+    return (names[item.key] || item.key) + ' x' + item.amount;
+  }
+  if (item.type === 'armor') return 'ボディシールド';
+  return (HEALS[item.key] || {}).name || item.key;
 }
 
 $('lock-hint').onclick = () => { if (game) game.requestLock(); };
@@ -203,8 +259,8 @@ net.on('roomUpdate', (m) => {
 
 net.on('started', (m) => {
   state.phase = 'playing';
-  enterGame({ mapSize: m.mapSize, spawn: m.spawn });
-  centerMsg('GAME START', '最後の1人になるまで戦え！', 2500);
+  enterGame({ mapSize: m.mapSize, spawn: m.spawn, inv: m.inv, loot: m.loot });
+  centerMsg('GAME START', '武器を拾って最後の1人になれ！', 2500);
 });
 
 net.on('state', (m) => {
@@ -212,12 +268,20 @@ net.on('state', (m) => {
 });
 
 net.on('shoot', (m) => {
-  if (game) game.remoteShoot(m.origin, m.dir);
+  if (game) game.remoteShoot(m.origin, m.dir, m.weapon);
 });
 
 net.on('hurt', (m) => {
-  if (game) game.setHp(m.hp);
+  if (game) game.setVitals(m.hp, m.shield);
 });
+
+// inventory / loot / heal events
+net.on('invUpdate', (m) => { if (game) game.setInventory(m.inv); });
+net.on('lootSpawn', (m) => { if (game) game.addLoot(m.item); });
+net.on('lootGone', (m) => { if (game) game.removeLoot(m.id); });
+net.on('healStart', (m) => { if (game) { game.healStart(m.key, m.time); game.setInventory(m.inv); } });
+net.on('healDone', (m) => { if (game) { game.healDone(); game.setVitals(m.hp, m.shield); game.setInventory(m.inv); } });
+net.on('healCancel', () => { if (game) game.healCancel(); });
 
 net.on('kill', (m) => {
   const mine = m.killer === state.selfId || m.victim === state.selfId;

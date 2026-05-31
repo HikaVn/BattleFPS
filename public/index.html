@@ -36,7 +36,9 @@
       <div class="error" id="menu-error"></div>
       <div class="hint">
         移動: <b>WASD</b> / ジャンプ: <b>Space</b> / 射撃: <b>左クリック</b><br />
-        視点: <b>マウス</b> / リロード: <b>R</b> / チャット: <b>Enter</b><br />
+        武器切替: <b>1 2 3 / ホイール</b> / リロード: <b>R</b> / 拾う: <b>E</b><br />
+        回復: <b>Z</b>注射 <b>C</b>メドキット / シールド: <b>X</b>セル <b>V</b>バッテリー<br />
+        マップに落ちている武器・弾・回復・シールドを拾って戦え。<br />
         最後の1人になるまで戦え。安全地帯（リング）は徐々に縮小します。
       </div>
     </div>
@@ -62,13 +64,38 @@
     <div class="hud-top-right">
       <div class="stat">残り <b id="alive-count">0</b> 人</div>
       <div class="stat">キル <b id="kill-count">0</b></div>
-      <div class="stat" style="font-size:12px;color:#8b949e;">弾 <span id="ammo">30</span>/30</div>
     </div>
     <div id="killfeed"></div>
+
+    <!-- bottom-left: health + shield -->
     <div class="hud-bottom-left">
+      <div class="shield-bar"><div class="shield-fill" id="shield-fill"></div></div>
       <div class="health-bar"><div class="health-fill" id="health-fill"></div></div>
-      <div class="health-label">HP <span id="health-num">100</span></div>
+      <div class="health-label">HP <span id="health-num">100</span> <span id="shield-num">0</span></div>
     </div>
+
+    <!-- bottom-center: weapon + ammo -->
+    <div id="weapon-hud">
+      <div id="weapon-name">ピストル</div>
+      <div id="ammo-line"><span id="ammo-mag">12</span> <span id="ammo-reserve">/ 30</span></div>
+      <div id="weapon-slots"></div>
+      <div id="reload-note"></div>
+    </div>
+
+    <!-- consumables tray -->
+    <div id="heal-tray">
+      <div class="heal-item" data-key="syringe"><span class="hk">Z</span> 注射器 <b id="heal-syringe">0</b></div>
+      <div class="heal-item" data-key="medkit"><span class="hk">C</span> メドキット <b id="heal-medkit">0</b></div>
+      <div class="heal-item" data-key="cell"><span class="hk">X</span> セル <b id="heal-cell">0</b></div>
+      <div class="heal-item" data-key="battery"><span class="hk">V</span> バッテリー <b id="heal-battery">0</b></div>
+    </div>
+
+    <!-- pickup prompt -->
+    <div id="pickup-prompt"><span class="hk">E</span> <span id="pickup-text"></span></div>
+
+    <!-- heal channel bar -->
+    <div id="heal-bar"><div id="heal-bar-fill"></div><div id="heal-bar-label"></div></div>
+
     <canvas id="minimap" width="150" height="150"></canvas>
     <div id="chat">
       <div id="chat-log"></div>

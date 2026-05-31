@@ -1,0 +1,3 @@
+生成したアイテム画像（ITEM_IMAGE_PROMPTS.md の指示でChatGPT Images 2.0が出力したPNG）をここに置きます。
+例: weapon_rifle.png, heal_medkit.png ...
+未配置でもゲームはプロシージャル表示で動作します。
