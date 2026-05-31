@@ -7,6 +7,7 @@
 // advancing each step when its goal is met. There is no ring and no defeat;
 // dummies respawn so you can keep practising.
 const $ = (id) => document.getElementById(id);
+const IS_TOUCH = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
 
 // Loot placed in a friendly arc in front of the spawn (spawn is at z=+40 looking toward origin / -z).
 const TUTORIAL_LOOT = [
@@ -65,6 +66,7 @@ export class Tutorial {
 
   // Called by main.js after it has built+started the renderer for solo 'started'.
   onStarted(m) {
+    document.body.classList.add('tutorial-active');
     $('tutorial-panel').classList.add('show');
     if (this.game) this.game.yaw = Math.PI;   // face the dummies (down -z)
     this.startPos = { x: m.spawn.x, z: m.spawn.z };
@@ -75,6 +77,7 @@ export class Tutorial {
   onState() { this._checkMovement(); }
 
   end() {
+    document.body.classList.remove('tutorial-active');
     this.active = false;
     $('tutorial-panel').classList.remove('show');
     if (this.room && this.room.tickTimer) { clearInterval(this.room.tickTimer); this.room.tickTimer = null; }
@@ -122,55 +125,64 @@ export class Tutorial {
       {
         key: 'move', step: 'ステップ 1 / 9', title: '移動する',
         desc: '<b>W A S D</b> キーで移動しよう。前後左右に動いてみて。',
+        descTouch: '画面左下の<b>スティック</b>を指で動かして移動しよう。前後左右に動いてみて。',
         goal: 4, prog: () => `移動距離 ${Math.min(this.counter, 4) | 0} / 4 m`,
         kind: 'move',
       },
       {
         key: 'jump', step: 'ステップ 2 / 9', title: 'ジャンプ',
         desc: '<b>Space</b> でジャンプ。段差や敵の弾を避けるのに使う。',
+        descTouch: '右下の<b>ジャンプ</b>ボタンを押してジャンプ。段差や敵の弾を避けるのに使う。',
         goal: 2, prog: () => `ジャンプ ${Math.min(this.counter, 2)} / 2 回`,
         kind: 'jump',
       },
       {
         key: 'shoot', step: 'ステップ 3 / 9', title: '射撃する',
         desc: 'マウスで前方の<b>ダミー</b>に狙いを定め、<b>左クリック</b>で撃とう。倒すと少しして復活する。',
+        descTouch: '<b>右画面をドラッグ</b>して前方の<b>ダミー</b>に照準を合わせ、右下の<b>射撃</b>ボタンで撃とう。倒すと復活する。',
         goal: 1, prog: () => `撃破 ${Math.min(this.flags.killed || 0, 1)} / 1`,
         kind: 'kill',
       },
       {
         key: 'reload', step: 'ステップ 4 / 9', title: 'リロード',
-        desc: '弾を撃ち切る前に <b>R</b> で再装填。弾倉(左の大きい数字)と予備弾を管理しよう。',
-        goal: 1, prog: () => this.flags.reloaded ? 'リロード完了！' : 'R を押してリロード',
+        desc: '弾を撃ち切る前に <b>R</b> で再装填。弾倉(右の大きい数字)と予備弾を管理しよう。',
+        descTouch: '弾を撃ち切る前に<b>リロード</b>ボタンで再装填。弾倉(残弾)と予備弾を管理しよう。',
+        goal: 1, prog: () => this.flags.reloaded ? 'リロード完了！' : 'リロードしてみよう',
         kind: 'reload',
       },
       {
         key: 'headshot', step: 'ステップ 5 / 9', title: 'ヘッドショット',
         desc: 'ダミーの<b>頭（球の部分）</b>を狙って撃つと大ダメージ。頭に当てて1体倒そう。',
+        descTouch: 'ダミーの<b>頭（球の部分）</b>に照準を合わせて<b>射撃</b>。頭に当てると大ダメージ。頭で1体倒そう。',
         goal: 1, prog: () => this.flags.gotHead ? 'ヘッドショット成功！' : '頭を狙って撃破しよう',
         kind: 'headshot',
       },
       {
         key: 'loot', step: 'ステップ 6 / 9', title: 'アイテムを拾う',
         desc: '足元の光る武器に近づき <b>E</b> で拾おう。後方(スポーン付近)に武器・弾・回復・シールドがある。',
-        goal: 1, prog: () => this.flags.pickedWeapon ? '武器を入手！' : '武器に近づいて E',
+        descTouch: '後方(スポーン付近)の光る武器に近づき、右下の<b>拾う</b>ボタンで拾おう。',
+        goal: 1, prog: () => this.flags.pickedWeapon ? '武器を入手！' : '武器に近づいて「拾う」',
         kind: 'lootWeapon',
       },
       {
         key: 'switch', step: 'ステップ 7 / 9', title: '武器を切り替える',
         desc: '<b>1 2 3</b> またはマウスホイールで武器を切替。状況に応じて持ち替えよう。',
-        goal: 1, prog: () => this.flags.switched ? '武器切替OK！' : '1 / 2 キーで切替',
+        descTouch: '右下の<b>武器</b>ボタンで武器を切替。状況に応じて持ち替えよう。',
+        goal: 1, prog: () => this.flags.switched ? '武器切替OK！' : '「武器」ボタンで切替',
         kind: 'switch',
       },
       {
         key: 'shield', step: 'ステップ 8 / 9', title: 'シールドを張る',
         desc: 'シールドはダメージを<b>HPより先に</b>吸収する。<b>X</b> でシールドセルを使ってチャージ（静止が必要）。',
-        goal: 1, prog: () => this.flags.shieldUp ? 'シールド展開！' : 'X でシールド回復',
+        descTouch: 'シールドはダメージを<b>HPより先に</b>吸収する。左の<b>青いシールドボタン</b>でチャージ（静止が必要）。',
+        goal: 1, prog: () => this.flags.shieldUp ? 'シールド展開！' : 'シールドをチャージしよう',
         kind: 'shield',
       },
       {
         key: 'heal', step: 'ステップ 9 / 9', title: '回復する',
         desc: 'ダメージを受けたら <b>Z</b>(注射器) や <b>C</b>(メドキット) でHP回復。使用中は動けないので安全な場所で。',
-        goal: 1, prog: () => this.flags.healedHp ? '回復完了！' : 'Z で回復しよう',
+        descTouch: 'ダメージを受けたら左の<b>緑の回復ボタン</b>でHP回復。使用中は動けないので安全な場所で。',
+        goal: 1, prog: () => this.flags.healedHp ? '回復完了！' : '回復してみよう',
         kind: 'heal',
       },
     ];
@@ -183,7 +195,7 @@ export class Tutorial {
     if (!s) return;
     $('tut-step').textContent = s.step;
     $('tut-title').textContent = s.title;
-    $('tut-desc').innerHTML = s.desc;
+    $('tut-desc').innerHTML = (IS_TOUCH && s.descTouch) ? s.descTouch : s.desc;
     $('tut-progress').textContent = s.prog ? s.prog() : '';
     this.counter = 0;
     this._installHitTap();
@@ -281,7 +293,9 @@ export class Tutorial {
     // Free-practice panel.
     $('tut-step').textContent = 'フリープラクティス';
     $('tut-title').textContent = '自由練習モード';
-    $('tut-desc').innerHTML = 'ダミーは倒すと復活します。好きなだけ練習しよう。<br>メニューに戻るには <b>Esc → 退出</b> またはページ再読込。';
+    $('tut-desc').innerHTML = IS_TOUCH
+      ? 'ダミーは倒すと復活します。好きなだけ練習しよう。<br>メニューに戻るにはページを再読込してください。'
+      : 'ダミーは倒すと復活します。好きなだけ練習しよう。<br>メニューに戻るには <b>Esc → 退出</b> またはページ再読込。';
     $('tut-progress').textContent = '';
     $('tut-skip').style.display = 'none';
     setTimeout(() => { if (this.active) $('tutorial-panel').classList.add('show'); }, 1200);
