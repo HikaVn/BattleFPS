@@ -1,7 +1,32 @@
 # BattleFPS
 
 Apexライクなブラウザ対戦FPS。ルームを作成して友達と複数人でバトルロイヤルが遊べます。
-HTML + Three.js（クライアント）と Node.js + WebSocket（サーバー）だけで動作します。
+HTML + Three.js だけで動き、**サーバーありでもサーバーなし（GitHub Pages）でも**マルチプレイ可能です。
+
+## 遊ぶ（2つの方法）
+
+**A. GitHub Pages（サーバー不要・おすすめ）**
+リポジトリの **Settings → Pages → Source: GitHub Actions** を有効にすると、`main` への
+push で自動デプロイされます（`.github/workflows/pages.yml`）。公開URL
+（`https://<ユーザー名>.github.io/BattleFPS/`）を開くだけで遊べます。
+
+> Pagesにはバックエンドが無いため、ゲームは自動で **WebRTC P2P モード** に切り替わります。
+> 「ルームを作成」した人のブラウザが進行役（権威ホスト）になり、参加者は4桁コードで
+> そのホストへ直接P2P接続します。シグナリングには無料の PeerJS 公開サーバーを使用します。
+
+**B. Node.js サーバー（同一サーバーに全員が接続）**
+
+```bash
+npm install      # ws をインストール
+npm start        # サーバー起動（デフォルト http://localhost:3000）
+```
+
+ブラウザで `http://localhost:3000` を開きます。バックエンドを検出すると自動で
+**WebSocket モード**になります。ポート変更: `PORT=8080 npm start`
+
+> どちらのモードでも同じゲームロジック（`public/js/game-core.js` の `GameRoom`）が動きます。
+> 接続方式は自動判定され、ロビーに現在のモードが表示されます。
+> 強制したい場合は URL に `?net=p2p` または `?net=ws` を付けます。
 
 ## 特徴
 
@@ -22,16 +47,11 @@ npm install      # ws をインストール
 npm start        # サーバー起動（デフォルト http://localhost:3000）
 ```
 
-ブラウザで `http://localhost:3000` を開きます。
-複数人で遊ぶには、同じネットワーク／公開URL上のサーバーに各自アクセスしてください。
+### 複数人で遊ぶ手順
 
-ポートを変える場合: `PORT=8080 npm start`
-
-### 一人でテストする
-
-1. ブラウザでサーバーを開き、名前を入れて「ルームを作成」
-2. 表示された4桁コードを別タブ／別ブラウザ／別端末で「参加」に入力
-3. ホスト（作成者）が「ゲーム開始」を押す（1人でも開始可能）
+1. 公開URL（Pages）またはサーバーURLを開き、名前を入れて「ルームを作成」
+2. 表示された4桁コードを友達に共有 → 各自「参加」に入力
+3. ホスト（作成者）が「ゲーム開始」を押す（1人でもテストプレイ可能）
 
 ## 操作方法
 
@@ -72,19 +92,23 @@ npm start        # サーバー起動（デフォルト http://localhost:3000）
 ## 構成
 
 ```
-server/server.js      WebSocketサーバー + 静的配信 + ルーム/ゲーム状態（武器/シールド/ルート/回復）
-public/index.html     メニュー・ロビー・HUD
-public/css/style.css  UIスタイル
-public/js/shared.js   武器/回復/ルートの共通定義（サーバー・クライアント共用）
-public/js/net.js      WebSocketクライアントラッパー
-public/js/game.js     Three.js FPSエンジン（マップ/移動/射撃/武器/ルート/リング/ミニマップ）
-public/js/main.js     UI と ネットワークとゲームの接続
-public/assets/items/  アイテム画像（ChatGPTで生成して配置）
-ITEM_IMAGE_PROMPTS.md ChatGPT Images 2.0 用の画像生成指示書
+public/js/game-core.js  ★トランスポート非依存の権威ゲームロジック（GameRoom）。
+                          Nodeサーバーとブラウザ(P2P)ホストの両方が同じコードを実行
+public/js/net.js        ネットワーク層。WebSocket と WebRTC(P2P) を同一APIで自動切替
+server/server.js        Node: 静的配信 + WebSocket を GameRoom に橋渡しするだけ
+public/index.html       メニュー・ロビー・HUD
+public/css/style.css    UIスタイル
+public/js/shared.js     武器/回復/ルート/画像マップの共通定義
+public/js/game.js       Three.js FPSエンジン（描画/移動/射撃/武器/ルート/リング/ミニマップ）
+public/js/main.js       UI と ネットワークとゲームの接続
+public/assets/items/    アイテム画像
+.github/workflows/pages.yml  GitHub Pages への自動デプロイ
 ```
 
-サーバーは20Hzで全プレイヤーの状態をブロードキャストします。命中判定はクライアントが
-報告し、サーバーが武器射程で簡易検証してダメージ（シールド→HPの順）を適用する方式です。
+20Hzで全プレイヤーの状態をブロードキャストします。命中判定はクライアントが報告し、
+権威ホスト（Nodeサーバー or P2Pホスト）が武器射程で簡易検証してダメージ
+（シールド→HPの順）を適用します。**同じ `GameRoom` がサーバーでもブラウザでも動く**ため、
+2つのデプロイ方式でゲーム挙動は完全に一致します。
 
 ## 今後の拡張案
 

@@ -254,6 +254,12 @@ net.on('joined', (m) => {
   state.hostId = m.hostId;
   state.phase = m.phase;
   $('lobby-code').textContent = m.room;
+  const modeEl = $('net-mode');
+  if (modeEl) {
+    modeEl.textContent = net.mode === 'p2p'
+      ? 'P2P接続（サーバー不要・ホストのブラウザが進行役）'
+      : 'サーバー接続';
+  }
   showOverlay('lobby');
   renderLobby(m.players);
 });
