@@ -23,6 +23,76 @@ const GRAVITY = 28;
 const JUMP_VELOCITY = 10;
 const PICKUP_RANGE = 3.2;
 
+// ---------------------------------------------------------------------------
+// Procedural textures (canvas-generated so the game needs no external art and
+// works offline on GitHub Pages). Each returns a cached THREE.CanvasTexture.
+// ---------------------------------------------------------------------------
+const _procTexCache = new Map();
+function _canvasTex(key, size, draw) {
+  if (_procTexCache.has(key)) return _procTexCache.get(key);
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  draw(cv.getContext('2d'), size);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 8;
+  _procTexCache.set(key, tex);
+  return tex;
+}
+
+// Grass / dirt ground: mottled greens with darker dirt speckles.
+function grassTexture() {
+  return _canvasTex('grass', 512, (ctx, S) => {
+    ctx.fillStyle = '#43662f';
+    ctx.fillRect(0, 0, S, S);
+    for (let i = 0; i < 9000; i++) {
+      const x = Math.random() * S, y = Math.random() * S;
+      const g = 70 + Math.random() * 90;
+      const r = 30 + Math.random() * 40;
+      ctx.fillStyle = `rgba(${r | 0},${g | 0},${(28 + Math.random() * 30) | 0},0.5)`;
+      ctx.fillRect(x, y, 1.5, 1.5 + Math.random() * 2);
+    }
+    // a few dirt patches
+    for (let i = 0; i < 24; i++) {
+      const x = Math.random() * S, y = Math.random() * S, r = 12 + Math.random() * 40;
+      const grd = ctx.createRadialGradient(x, y, 0, x, y, r);
+      grd.addColorStop(0, 'rgba(96,74,48,0.45)');
+      grd.addColorStop(1, 'rgba(96,74,48,0)');
+      ctx.fillStyle = grd;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  });
+}
+
+// Building facade: concrete base with a grid of lit/dark windows.
+function buildingTexture(key, baseColor, floors, cols) {
+  return _canvasTex(key, 256, (ctx, S) => {
+    ctx.fillStyle = baseColor;
+    ctx.fillRect(0, 0, S, S);
+    // subtle concrete noise
+    for (let i = 0; i < 4000; i++) {
+      ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.06})`;
+      ctx.fillRect(Math.random() * S, Math.random() * S, 2, 2);
+    }
+    const mx = S * 0.12, my = S * 0.12;
+    const gw = (S - mx * 2) / cols, gh = (S - my * 2) / floors;
+    for (let r = 0; r < floors; r++) {
+      for (let c = 0; c < cols; c++) {
+        const x = mx + c * gw + gw * 0.16;
+        const y = my + r * gh + gh * 0.16;
+        const w = gw * 0.68, h = gh * 0.68;
+        const lit = Math.random() < 0.32;
+        ctx.fillStyle = lit ? `rgba(${230 + Math.random() * 25 | 0},${210 + Math.random() * 30 | 0},150,0.95)`
+                            : 'rgba(35,45,58,0.92)';
+        ctx.fillRect(x, y, w, h);
+        ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+      }
+    }
+  });
+}
+
 // Small seeded PRNG so every client builds an identical map for a room.
 function makeRng(seedStr) {
   let h = 1779033703 ^ seedStr.length;
@@ -48,10 +118,17 @@ export class Game {
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
 
+    // Horizon colour shared by the sky dome and the distance fog so the world
+    // fades seamlessly into the sky.
+    this._horizon = new THREE.Color(0xbcd6ea);
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x9fc6e8);
-    this.scene.fog = new THREE.Fog(0x9fc6e8, 80, 260);
+    this.scene.background = this._horizon.clone();
+    this.scene.fog = new THREE.Fog(this._horizon.clone(), 120, 340);
 
     this.camera = new THREE.PerspectiveCamera(80, innerWidth / innerHeight, 0.1, 1000);
 
@@ -278,29 +355,36 @@ export class Game {
     const rng = makeRng(seed);
     const S = this.mapSize;
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0x556677, 0.9);
+    // ---- lighting: warm sun + cool sky fill ----
+    const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x4a5a3a, 0.75);
     this.scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.0);
-    sun.position.set(60, 120, 40);
+    const sun = new THREE.DirectionalLight(0xfff2d6, 2.0);
+    sun.position.set(120, 180, 80);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.camera.left = -S; sun.shadow.camera.right = S;
     sun.shadow.camera.top = S; sun.shadow.camera.bottom = -S;
+    sun.shadow.camera.near = 10; sun.shadow.camera.far = 600;
+    sun.shadow.bias = -0.0004;
     this.scene.add(sun);
 
-    const groundMat = new THREE.MeshStandardMaterial({ color: 0x4f7a4a });
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(S * 2.2, S * 2.2), groundMat);
+    // ---- sky dome (gradient) + sun glow + clouds ----
+    this._buildSky(S, sun.position);
+
+    // ---- ground: tiled procedural grass ----
+    const grassTex = grassTexture();
+    grassTex.repeat.set(S / 6, S / 6);
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(S * 2.4, S * 2.4),
+      new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1, metalness: 0 }));
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    const grid = new THREE.GridHelper(S * 2, 60, 0x3a5a37, 0x3a5a37);
-    grid.position.y = 0.02;
-    grid.material.opacity = 0.35; grid.material.transparent = true;
-    this.scene.add(grid);
-
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x6b7280 });
-    const wallH = 8, t = 2;
+    // ---- perimeter walls (concrete) ----
+    const concrete = buildingTexture('wall-concrete', '#8a8f96', 4, 8);
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.9 });
+    const wallH = 10, t = 2;
     const walls = [
       [0, S, S * 2 + t, t], [0, -S, S * 2 + t, t],
       [S, 0, t, S * 2 + t], [-S, 0, t, S * 2 + t],
@@ -314,22 +398,44 @@ export class Game {
       this.colliders.push({ min: new THREE.Vector3(x - w / 2, 0, z - d / 2), max: new THREE.Vector3(x + w / 2, wallH, z + d / 2) });
     }
 
-    const palette = [0x8d6e63, 0x90a4ae, 0xa1887f, 0x78909c, 0xbcaaa4];
+    // ---- buildings: textured facades with darker flat roofs ----
+    const facades = [
+      buildingTexture('fac-a', '#9a8f80', 6, 5),
+      buildingTexture('fac-b', '#7f8a92', 7, 4),
+      buildingTexture('fac-c', '#a8978a', 5, 6),
+      buildingTexture('fac-d', '#8b9aa0', 8, 4),
+      buildingTexture('fac-e', '#b3a596', 6, 5),
+    ];
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x3b4047, roughness: 0.95 });
     const count = 46;
     for (let i = 0; i < count; i++) {
-      const w = 4 + rng() * 16;
-      const d = 4 + rng() * 16;
-      const h = 3 + rng() * 14;
+      const w = 5 + rng() * 16;
+      const d = 5 + rng() * 16;
+      const h = 5 + rng() * 22;
       const x = (rng() * 2 - 1) * S * 0.85;
       const z = (rng() * 2 - 1) * S * 0.85;
-      if (Math.hypot(x, z) < 10) continue;
-      const mat = new THREE.MeshStandardMaterial({ color: palette[Math.floor(rng() * palette.length)] });
-      const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      if (Math.hypot(x, z) < 12) continue;
+
+      // Facade texture tiled by building size so windows stay roughly uniform.
+      const tex = facades[Math.floor(rng() * facades.length)].clone();
+      tex.needsUpdate = true;
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(Math.max(1, Math.round(w / 6)), Math.max(1, Math.round(h / 5)));
+      const sideMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, metalness: 0.05 });
+      // top/bottom use the plain roof material; sides use the facade
+      const mats = [sideMat, sideMat, roofMat, roofMat, sideMat, sideMat];
+      const box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mats);
       box.position.set(x, h / 2, z);
       box.castShadow = true; box.receiveShadow = true;
       this.scene.add(box);
       this.boxMeshes.push(box);
       this.colliders.push({ min: new THREE.Vector3(x - w / 2, 0, z - d / 2), max: new THREE.Vector3(x + w / 2, h, z + d / 2) });
+
+      // a slightly overhanging roof cap for a bit of silhouette detail
+      const cap = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.5, d + 0.6), roofMat);
+      cap.position.set(x, h + 0.25, z);
+      cap.castShadow = true;
+      this.scene.add(cap);
     }
 
     // Gun viewmodel attached to the camera (rebuilt when weapon changes).
@@ -337,6 +443,66 @@ export class Game {
     this.camera.add(this.gun);
     this.scene.add(this.camera);
     this._updateGunModel();
+  }
+
+  // Large inward-facing sky dome with a vertical gradient (deep blue zenith ->
+  // pale horizon), a soft sun disc/glow and a few drifting cloud sprites.
+  _buildSky(S, sunPos) {
+    const sky = _canvasTex('sky', 512, (ctx, T) => {
+      const g = ctx.createLinearGradient(0, 0, 0, T);
+      g.addColorStop(0.0, '#2a6fc4');   // zenith
+      g.addColorStop(0.45, '#79b0e4');
+      g.addColorStop(0.7, '#bcd6ea');   // horizon (matches fog)
+      g.addColorStop(1.0, '#cfe0ee');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, T, T);
+    });
+    sky.wrapS = sky.wrapT = THREE.ClampToEdgeWrapping;
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(480, 32, 16),
+      new THREE.MeshBasicMaterial({ map: sky, side: THREE.BackSide, fog: false, depthWrite: false }));
+    this.scene.add(dome);
+
+    // Sun disc + glow billboard placed in the sun's direction.
+    const dir = sunPos.clone().normalize().multiplyScalar(440);
+    const glowTex = _canvasTex('sunglow', 256, (ctx, T) => {
+      const grd = ctx.createRadialGradient(T / 2, T / 2, 0, T / 2, T / 2, T / 2);
+      grd.addColorStop(0, 'rgba(255,250,230,1)');
+      grd.addColorStop(0.18, 'rgba(255,245,210,0.95)');
+      grd.addColorStop(0.5, 'rgba(255,235,180,0.35)');
+      grd.addColorStop(1, 'rgba(255,235,180,0)');
+      ctx.fillStyle = grd; ctx.fillRect(0, 0, T, T);
+    });
+    const sunSpr = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, transparent: true, fog: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+    sunSpr.position.copy(dir);
+    sunSpr.scale.set(150, 150, 1);
+    this.scene.add(sunSpr);
+
+    // Drifting clouds: soft white blobs on billboards high in the sky.
+    const cloudTex = _canvasTex('cloud', 256, (ctx, T) => {
+      ctx.clearRect(0, 0, T, T);
+      for (let i = 0; i < 14; i++) {
+        const x = T * (0.2 + Math.random() * 0.6);
+        const y = T * (0.35 + Math.random() * 0.3);
+        const r = T * (0.08 + Math.random() * 0.13);
+        const grd = ctx.createRadialGradient(x, y, 0, x, y, r);
+        grd.addColorStop(0, 'rgba(255,255,255,0.95)');
+        grd.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+      }
+    });
+    this.clouds = [];
+    for (let i = 0; i < 12; i++) {
+      const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: cloudTex, transparent: true, opacity: 0.8, fog: false, depthWrite: false }));
+      const a = Math.random() * Math.PI * 2;
+      const rad = 220 + Math.random() * 180;
+      spr.position.set(Math.cos(a) * rad, 120 + Math.random() * 90, Math.sin(a) * rad);
+      const sc = 80 + Math.random() * 120;
+      spr.scale.set(sc, sc * 0.55, 1);
+      spr.userData.drift = 1 + Math.random() * 2;
+      this.scene.add(spr);
+      this.clouds.push(spr);
+    }
   }
 
   _updateGunModel() {
@@ -645,9 +811,19 @@ export class Game {
     this._updateTracers(dt);
     this._updateLoot(dt);
     this._updateHeal();
+    this._updateClouds(dt);
     this._sendInput();
     this._drawMinimap();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  _updateClouds(dt) {
+    if (!this.clouds) return;
+    const lim = 460;
+    for (const c of this.clouds) {
+      c.position.x += c.userData.drift * dt;
+      if (c.position.x > lim) c.position.x = -lim;
+    }
   }
 
   _updateMovement(dt) {
