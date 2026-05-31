@@ -84,6 +84,10 @@ export class Game {
 
     this.keys = {};
     this.locked = false;
+    this.touchMode = false;     // mobile: bypass pointer lock, use virtual controls
+    this.moveX = 0;             // touch joystick strafe (-1..1)
+    this.moveZ = 0;             // touch joystick forward (-1..1, + = forward)
+    this.sprinting = false;     // touch: joystick pushed to edge
     this._raycaster = new THREE.Raycaster();
     this.clock = new THREE.Clock();
     this._lastInputSent = 0;
@@ -121,7 +125,36 @@ export class Game {
   }
 
   stop() { this.running = false; }
-  requestLock() { this.canvas.requestPointerLock(); }
+  requestLock() { if (!this.touchMode) this.canvas.requestPointerLock(); }
+
+  // ---- touch / mobile API -------------------------------------------------
+  enableTouch() {
+    this.touchMode = true;
+    this.locked = true;        // touch controls are always "active"
+  }
+  // Virtual joystick vector, components in -1..1 (z+ = forward / W).
+  setMoveAxis(x, z, sprint) {
+    this.moveX = Math.max(-1, Math.min(1, x));
+    this.moveZ = Math.max(-1, Math.min(1, z));
+    this.sprinting = !!sprint;
+  }
+  // Look delta in pixels from a drag on the right half of the screen.
+  applyLook(dx, dy) {
+    const s = 0.005;
+    this.yaw -= dx * s;
+    this.pitch -= dy * s;
+    const lim = Math.PI / 2 - 0.05;
+    this.pitch = Math.max(-lim, Math.min(lim, this.pitch));
+  }
+  setFiring(on) { this._mouseDown = !!on; }
+  touchJump() { if (this.alive && this.onGround) { this.vel.y = JUMP_VELOCITY; this.onGround = false; } }
+  touchReload() { this._reload(); }
+  touchPickup() { this._tryPickup(); }
+  touchHeal(key) { this.net.send({ t: 'useHeal', key }); }
+  touchSwitchNext() {
+    const idx = this.inv.weapons.indexOf(this.inv.current);
+    this._switchSlot((idx + 1) % this.inv.weapons.length);
+  }
 
   // Update remote players + ring from a server state snapshot.
   setState(state) {
@@ -558,17 +591,23 @@ export class Game {
 
     const canMove = this.alive && this.locked && !this.healing;
     if (canMove) {
-      const forward = (this.keys['KeyW'] ? 1 : 0) - (this.keys['KeyS'] ? 1 : 0);
-      const strafe = (this.keys['KeyD'] ? 1 : 0) - (this.keys['KeyA'] ? 1 : 0);
-      const speed = this.keys['ShiftLeft'] ? SPRINT_SPEED : MOVE_SPEED;
+      let forward, strafe, sprint;
+      if (this.touchMode) {
+        forward = this.moveZ; strafe = this.moveX; sprint = this.sprinting;
+      } else {
+        forward = (this.keys['KeyW'] ? 1 : 0) - (this.keys['KeyS'] ? 1 : 0);
+        strafe = (this.keys['KeyD'] ? 1 : 0) - (this.keys['KeyA'] ? 1 : 0);
+        sprint = this.keys['ShiftLeft'];
+      }
+      const speed = sprint ? SPRINT_SPEED : MOVE_SPEED;
       const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
       let dx = (-sin * forward + cos * strafe);
       let dz = (-cos * forward - sin * strafe);
       const len = Math.hypot(dx, dz);
-      if (len > 0) { dx /= len; dz /= len; }
+      if (len > 1) { dx /= len; dz /= len; } // allow analog (len<1) speed on touch
       this.vel.x = dx * speed;
       this.vel.z = dz * speed;
-      if (this.keys['Space'] && this.onGround) { this.vel.y = JUMP_VELOCITY; this.onGround = false; }
+      if (!this.touchMode && this.keys['Space'] && this.onGround) { this.vel.y = JUMP_VELOCITY; this.onGround = false; }
     } else {
       this.vel.x = 0; this.vel.z = 0;
     }
