@@ -1,6 +1,7 @@
 // App entry: wires the menu / lobby / HUD UI to the network and game engine.
 import { Net } from './net.js';
 import { Game } from './game.js';
+import { Tutorial } from './tutorial.js';
 import { WEAPONS, HEALS, lootImage } from './shared.js';
 
 const $ = (id) => document.getElementById(id);
@@ -11,10 +12,12 @@ const state = {
   hostId: null,
   phase: 'menu',
   name: '',
+  solo: false,
 };
 
 const net = new Net();
 let game = null;
+const tutorial = new Tutorial(net, () => game);
 
 // ---- UI helpers -----------------------------------------------------------
 function show(el) { el.classList.remove('hidden'); }
@@ -70,8 +73,16 @@ async function ensureConnected() {
   }
 }
 
+$('tutorial-btn').onclick = () => {
+  $('menu-error').textContent = '';
+  state.name = getName();
+  state.solo = true;
+  tutorial.begin(state.name);   // emits solo 'joined' -> 'started'
+};
+
 $('create-btn').onclick = async () => {
   $('menu-error').textContent = '';
+  state.solo = false;
   state.name = getName();
   await ensureConnected();
   net.send({ t: 'create', name: state.name });
@@ -253,6 +264,8 @@ net.on('joined', (m) => {
   state.room = m.room;
   state.hostId = m.hostId;
   state.phase = m.phase;
+  // Solo tutorial skips the lobby and goes straight into the dojo.
+  if (state.solo) return;
   $('lobby-code').textContent = m.room;
   const modeEl = $('net-mode');
   if (modeEl) {
@@ -277,11 +290,16 @@ net.on('roomUpdate', (m) => {
 net.on('started', (m) => {
   state.phase = 'playing';
   enterGame({ mapSize: m.mapSize, spawn: m.spawn, inv: m.inv, loot: m.loot });
-  centerMsg('GAME START', '武器を拾って最後の1人になれ！', 2500);
+  if (state.solo) {
+    tutorial.onStarted(m);
+  } else {
+    centerMsg('GAME START', '武器を拾って最後の1人になれ！', 2500);
+  }
 });
 
 net.on('state', (m) => {
   if (game) game.setState(m);
+  if (state.solo) tutorial.onState(m);
 });
 
 net.on('shoot', (m) => {
