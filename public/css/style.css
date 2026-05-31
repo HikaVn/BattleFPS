@@ -1,0 +1,245 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --accent: #ff5a3c;
+  --accent2: #ffb33c;
+  --bg: #0d1117;
+  --panel: rgba(20, 26, 34, 0.92);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: #e6edf3;
+  font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif;
+  user-select: none;
+}
+
+#game-canvas { display: block; width: 100%; height: 100%; }
+
+/* ---------- Overlays ---------- */
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 20%, #1b2430, #07090d 80%);
+  z-index: 50;
+}
+.overlay.hidden { display: none; }
+
+.panel {
+  width: min(440px, 92vw);
+  background: var(--panel);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  padding: 28px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.logo {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-align: center;
+  margin-bottom: 4px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.tagline { text-align: center; color: #8b949e; margin-bottom: 22px; font-size: 13px; }
+
+label { display: block; font-size: 12px; color: #8b949e; margin: 14px 0 6px; }
+input[type="text"] {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0b0f14;
+  color: #e6edf3;
+  font-size: 15px;
+  outline: none;
+}
+input[type="text"]:focus { border-color: var(--accent); }
+
+.row { display: flex; gap: 10px; }
+.row > * { flex: 1; }
+
+button {
+  margin-top: 16px;
+  width: 100%;
+  padding: 12px 14px;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  color: #1a1208;
+  transition: transform 0.05s ease, filter 0.15s ease;
+}
+button:hover { filter: brightness(1.08); }
+button:active { transform: translateY(1px); }
+button.secondary { background: #21262d; color: #e6edf3; border: 1px solid rgba(255,255,255,0.1); }
+
+.error { color: var(--accent); font-size: 13px; min-height: 18px; margin-top: 10px; text-align: center; }
+.hint { color: #6e7681; font-size: 12px; margin-top: 16px; line-height: 1.6; }
+
+/* ---------- Lobby ---------- */
+.room-code {
+  text-align: center;
+  font-size: 13px;
+  color: #8b949e;
+  margin-bottom: 14px;
+}
+.room-code b {
+  font-size: 28px;
+  letter-spacing: 6px;
+  color: var(--accent2);
+  display: block;
+  margin-top: 4px;
+}
+#player-list { list-style: none; margin: 10px 0; max-height: 240px; overflow-y: auto; }
+#player-list li {
+  padding: 10px 14px;
+  background: #0b0f14;
+  border-radius: 8px;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.badge { font-size: 11px; background: var(--accent); color: #1a1208; padding: 2px 8px; border-radius: 10px; font-weight: 700; }
+
+/* ---------- HUD ---------- */
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 20; display: none; }
+#hud.active { display: block; }
+
+#crosshair {
+  position: fixed; left: 50%; top: 50%;
+  width: 22px; height: 22px;
+  transform: translate(-50%, -50%);
+}
+#crosshair::before, #crosshair::after {
+  content: ""; position: absolute; background: rgba(255,255,255,0.85);
+}
+#crosshair::before { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-50%); }
+#crosshair::after { top: 50%; left: 0; height: 2px; width: 100%; transform: translateY(-50%); }
+#crosshair.hit::before, #crosshair.hit::after { background: #ff4d4d; }
+
+.hud-bottom-left { position: fixed; left: 24px; bottom: 24px; }
+.shield-bar {
+  width: 260px; height: 10px; background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden; margin-bottom: 4px;
+}
+.shield-fill { height: 100%; width: 0%; background: linear-gradient(90deg,#4dc3ff,#1f9fff); transition: width 0.15s; }
+.health-bar {
+  width: 260px; height: 18px; background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; overflow: hidden;
+}
+.health-fill { height: 100%; width: 100%; background: linear-gradient(90deg,#39d353,#26a641); transition: width 0.15s; }
+.health-label { font-size: 13px; margin-top: 4px; color: #cdd9e5; text-shadow: 0 1px 2px #000; }
+.health-label #shield-num { color: #4dc3ff; margin-left: 6px; }
+
+/* weapon + ammo HUD (bottom center-right) */
+#weapon-hud {
+  position: fixed; right: 200px; bottom: 24px; text-align: right;
+  text-shadow: 0 1px 3px #000; min-width: 160px;
+}
+#weapon-name { font-size: 15px; color: #e6edf3; font-weight: 700; }
+#ammo-line { font-size: 13px; color: #cdd9e5; }
+#ammo-line #ammo-mag { font-size: 30px; font-weight: 800; color: #fff; }
+#ammo-line #ammo-reserve { color: #8b949e; }
+#weapon-slots { margin-top: 4px; display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+.wslot {
+  font-size: 11px; padding: 2px 7px; border-radius: 4px;
+  background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.12); color: #8b949e;
+}
+.wslot.active { background: var(--accent); color: #1a1208; border-color: var(--accent); font-weight: 700; }
+.wslot img { width: 18px; height: 18px; vertical-align: middle; margin-right: 3px; object-fit: contain; }
+#reload-note { font-size: 12px; color: var(--accent2); height: 16px; margin-top: 2px; }
+
+/* consumables tray */
+#heal-tray { position: fixed; left: 24px; bottom: 90px; display: flex; flex-direction: column; gap: 4px; }
+.heal-item {
+  font-size: 12px; color: #cdd9e5; background: rgba(0,0,0,0.45);
+  padding: 4px 10px; border-radius: 6px; text-shadow: 0 1px 2px #000;
+}
+.heal-item.empty { opacity: 0.35; }
+.heal-item b { color: var(--accent2); margin-left: 4px; }
+.heal-item img { width: 22px; height: 22px; vertical-align: middle; margin: 0 4px; object-fit: contain; }
+.hk { display: inline-block; min-width: 16px; text-align: center; background: rgba(255,255,255,0.15);
+  border-radius: 3px; padding: 0 4px; font-weight: 700; margin-right: 4px; }
+
+/* pickup prompt */
+#pickup-prompt {
+  position: fixed; left: 50%; top: 56%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 8px;
+  font-size: 14px; color: #fff; display: none; text-shadow: 0 1px 2px #000;
+}
+#pickup-prompt.show { display: block; }
+#pickup-prompt #pickup-icon { width: 28px; height: 28px; vertical-align: middle; object-fit: contain; }
+
+/* heal channel bar */
+#heal-bar {
+  position: fixed; left: 50%; top: 64%; transform: translateX(-50%);
+  width: 240px; height: 14px; background: rgba(0,0,0,0.6);
+  border: 1px solid rgba(255,255,255,0.2); border-radius: 7px; overflow: hidden; display: none;
+}
+#heal-bar.show { display: block; }
+#heal-bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg,#39d353,#26a641); }
+#heal-bar-label { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 14px; color: #fff; text-shadow: 0 1px 2px #000; }
+
+.hud-top-right { position: fixed; right: 24px; top: 20px; text-align: right; text-shadow: 0 1px 3px #000; }
+.hud-top-right .stat { font-size: 14px; }
+.hud-top-right .stat b { color: var(--accent2); font-size: 18px; }
+
+#killfeed { position: fixed; right: 24px; top: 90px; text-align: right; }
+#killfeed div {
+  font-size: 13px; margin-bottom: 4px; background: rgba(0,0,0,0.45);
+  padding: 4px 10px; border-radius: 4px; display: inline-block; text-shadow: 0 1px 2px #000;
+}
+#killfeed .me { border-left: 3px solid var(--accent); }
+
+#ring-info { position: fixed; left: 50%; top: 20px; transform: translateX(-50%); font-size: 13px; color: var(--accent2); text-shadow: 0 1px 3px #000; }
+
+#minimap {
+  position: fixed; right: 24px; bottom: 24px;
+  width: 150px; height: 150px;
+  background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px;
+}
+
+#damage-flash {
+  position: fixed; inset: 0; background: rgba(255,40,30,0); pointer-events: none;
+  z-index: 25; transition: background 0.1s;
+}
+
+#center-msg {
+  position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  text-align: center; z-index: 30; display: none;
+}
+#center-msg h1 { font-size: 42px; color: var(--accent2); text-shadow: 0 2px 10px #000; }
+#center-msg p { margin-top: 10px; color: #cdd9e5; }
+#center-msg.show { display: block; }
+
+/* ---------- Chat ---------- */
+#chat { position: fixed; left: 24px; bottom: 90px; width: 320px; z-index: 22; pointer-events: none; }
+#chat-log { max-height: 160px; overflow-y: hidden; }
+#chat-log div { font-size: 13px; margin-bottom: 3px; text-shadow: 0 1px 2px #000; }
+#chat-log .name { color: var(--accent2); font-weight: 700; }
+#chat-input {
+  width: 100%; margin-top: 6px; padding: 8px 10px; border-radius: 6px; display: none;
+  background: rgba(0,0,0,0.7); border: 1px solid var(--accent); color: #fff; pointer-events: auto;
+}
+#chat-input.show { display: block; }
+
+.lock-hint {
+  position: fixed; left: 50%; top: 60%; transform: translateX(-50%);
+  background: rgba(0,0,0,0.7); padding: 12px 22px; border-radius: 8px; z-index: 24;
+  pointer-events: auto; cursor: pointer; display: none; text-align: center;
+}
+.lock-hint.show { display: block; }

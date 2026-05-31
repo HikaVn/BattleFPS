@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BattleFPS — Apex-like Browser Arena</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Main menu -->
+  <div id="menu" class="overlay">
+    <div class="panel">
+      <div class="logo">BATTLE&nbsp;FPS</div>
+      <div class="tagline">Apexライク・ブラウザ対戦アリーナ</div>
+
+      <label for="name-input">プレイヤー名</label>
+      <input type="text" id="name-input" maxlength="16" placeholder="名前を入力" />
+
+      <button id="create-btn">ルームを作成</button>
+
+      <label for="room-input">ルームコードで参加</label>
+      <div class="row">
+        <input type="text" id="room-input" maxlength="4" placeholder="例: ABCD" style="text-transform:uppercase" />
+        <button id="join-btn" style="flex:0 0 110px;">参加</button>
+      </div>
+
+      <div class="error" id="menu-error"></div>
+      <div class="hint">
+        移動: <b>WASD</b> / ジャンプ: <b>Space</b> / 射撃: <b>左クリック</b><br />
+        武器切替: <b>1 2 3 / ホイール</b> / リロード: <b>R</b> / 拾う: <b>E</b><br />
+        回復: <b>Z</b>注射 <b>C</b>メドキット / シールド: <b>X</b>セル <b>V</b>バッテリー<br />
+        マップに落ちている武器・弾・回復・シールドを拾って戦え。<br />
+        最後の1人になるまで戦え。安全地帯（リング）は徐々に縮小します。
+      </div>
+    </div>
+  </div>
+
+  <!-- Lobby -->
+  <div id="lobby" class="overlay hidden">
+    <div class="panel">
+      <div class="logo" style="font-size:24px;">ロビー</div>
+      <div class="room-code">ルームコード <b id="lobby-code">----</b></div>
+      <div id="net-mode" style="font-size:11px;color:#6e7681;text-align:center;margin-bottom:10px;"></div>
+      <div style="font-size:12px;color:#8b949e;">参加者</div>
+      <ul id="player-list"></ul>
+      <button id="start-btn">ゲーム開始</button>
+      <button id="leave-btn" class="secondary">退出</button>
+      <div class="hint" id="lobby-hint">ホストが開始ボタンを押すとゲームが始まります。</div>
+    </div>
+  </div>
+
+  <!-- In-game HUD -->
+  <div id="hud">
+    <div id="crosshair"></div>
+    <div id="ring-info"></div>
+    <div class="hud-top-right">
+      <div class="stat">残り <b id="alive-count">0</b> 人</div>
+      <div class="stat">キル <b id="kill-count">0</b></div>
+    </div>
+    <div id="killfeed"></div>
+
+    <!-- bottom-left: health + shield -->
+    <div class="hud-bottom-left">
+      <div class="shield-bar"><div class="shield-fill" id="shield-fill"></div></div>
+      <div class="health-bar"><div class="health-fill" id="health-fill"></div></div>
+      <div class="health-label">HP <span id="health-num">100</span> <span id="shield-num">0</span></div>
+    </div>
+
+    <!-- bottom-center: weapon + ammo -->
+    <div id="weapon-hud">
+      <div id="weapon-name">ピストル</div>
+      <div id="ammo-line"><span id="ammo-mag">12</span> <span id="ammo-reserve">/ 30</span></div>
+      <div id="weapon-slots"></div>
+      <div id="reload-note"></div>
+    </div>
+
+    <!-- consumables tray -->
+    <div id="heal-tray">
+      <div class="heal-item" data-key="syringe"><span class="hk">Z</span><img src="assets/items/heal_syringe.png" alt="" onerror="this.remove()"> 注射器 <b id="heal-syringe">0</b></div>
+      <div class="heal-item" data-key="medkit"><span class="hk">C</span><img src="assets/items/heal_medkit.png" alt="" onerror="this.remove()"> メドキット <b id="heal-medkit">0</b></div>
+      <div class="heal-item" data-key="cell"><span class="hk">X</span><img src="assets/items/shield_cell.png" alt="" onerror="this.remove()"> セル <b id="heal-cell">0</b></div>
+      <div class="heal-item" data-key="battery"><span class="hk">V</span><img src="assets/items/shield_battery.png" alt="" onerror="this.remove()"> バッテリー <b id="heal-battery">0</b></div>
+    </div>
+
+    <!-- pickup prompt -->
+    <div id="pickup-prompt"><span class="hk">E</span> <img id="pickup-icon" alt="" style="display:none"> <span id="pickup-text"></span></div>
+
+    <!-- heal channel bar -->
+    <div id="heal-bar"><div id="heal-bar-fill"></div><div id="heal-bar-label"></div></div>
+
+    <canvas id="minimap" width="150" height="150"></canvas>
+    <div id="chat">
+      <div id="chat-log"></div>
+      <input type="text" id="chat-input" maxlength="200" placeholder="メッセージを入力して Enter" />
+    </div>
+  </div>
+
+  <div id="damage-flash"></div>
+  <div id="center-msg"><h1 id="center-title"></h1><p id="center-sub"></p></div>
+  <div class="lock-hint" id="lock-hint">クリックしてマウス操作を有効化</div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
